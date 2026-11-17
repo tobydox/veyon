@@ -22,6 +22,7 @@ build_veyon_plugin(linux-platform
 	LinuxPlatformConfigurationPage.ui
 	LinuxFilesystemFunctions.cpp
 	LinuxInputDeviceFunctions.cpp
+	LinuxLogFileDirectory.cpp
 	InputBlockHelper.cpp
 	InputBlockHelper.h
 	LinuxNetworkFunctions.cpp
@@ -41,6 +42,7 @@ build_veyon_plugin(linux-platform
 	LinuxKeyboardInput.h
 	LinuxKeyboardInput.cpp
 	LinuxKeyboardShortcutTrapper.h
+	LinuxLogFileDirectory.h
 	LinuxNetworkFunctions.h
 	LinuxServerProcess.h
 	LinuxServiceBusInterface.h
