@@ -27,11 +27,12 @@ struct SecretProperty
 	bool isLegacyPassword;
 };
 
-inline constexpr std::array<SecretProperty, 3> SecretProperties{{
+inline constexpr std::array<SecretProperty, 4> SecretProperties{{
 	{QLatin1String("LDAP"), QLatin1String("BindPassword"), QLatin1String("ldap/bindPassword"), true},
 	{QLatin1String("ExternalVncServer"), QLatin1String("Password"), QLatin1String("vncserver-external/password"), true},
 	// Entra ID connector add-on (WP15)
 	{QLatin1String("EntraIdConnector"), QLatin1String("ClientSecret"), QLatin1String("entra/clientSecret"), true},
+	{QLatin1String("EntraIdConnector"), QLatin1String("ClientCertificateKey"), QLatin1String("entra/clientCertificateKey"), false},
 }};
 
 // case-insensitive like the registry-based configuration on Windows
