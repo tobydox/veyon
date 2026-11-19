@@ -98,4 +98,4 @@ both directories by handle, without following junctions or symlinks:
 | `pki` | `caKey`, `tokenSigningKey` | core (CA host) |
 | `ldap` | `bindPassword` | LDAP plugin |
 | `vncserver-external` | `password` | external VNC server plugin |
-| `entra` | plugin-defined | Entra ID connector |
+| `entra` | `clientSecret` | Entra ID connector |
