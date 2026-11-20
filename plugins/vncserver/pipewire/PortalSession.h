@@ -130,6 +130,16 @@ public:
 	 */
 	void notifyPointer(int buttonMask, int x, int y, QSize framebufferSize);
 
+	// version of org.freedesktop.portal.RemoteDesktop with persist_mode and restore_token
+	// (xdg-desktop-portal >= 1.17)
+	static constexpr uint MinimumPersistenceVersion = 2;
+
+	/**
+	 * @brief Whether the portal can remember the approval (persist_mode, restore_token); known once
+	 * the portal answered, i.e. usually after construction.
+	 */
+	bool isPersistenceSupported() const { return m_portalVersion >= MinimumPersistenceVersion; }
+
 	/**
 	 * @brief The file which keeps the restore token across server runs:
 	 * `$XDG_STATE_HOME/veyon/portal-restore-token` (default `~/.local/state`) with mode 0600 in a
@@ -152,9 +162,12 @@ private Q_SLOTS:
 
 private:
 	static constexpr int RegistryCallTimeout = 5000;
+	static constexpr int PropertyCallTimeout = 5000;
 
 	// portal >= 1.20: app ID of this connection (org.freedesktop.host.portal.Registry)
 	void registerHostAppId(const QString& appId);
+	// reads the version of the RemoteDesktop interface unless known already
+	void detectPersistenceSupport();
 	void createSession();
 	void selectDevices();
 	void selectSources();
@@ -208,6 +221,8 @@ private:
 	QString m_sessionHandle;
 	QString m_restoreToken;
 	const bool m_persistRestoreToken;
+	// 0 = not known yet
+	uint m_portalVersion{0};
 	State m_state{State::Idle};
 	int m_pipewireFd{-1};
 	quint32 m_pipeWireNodeId{0};

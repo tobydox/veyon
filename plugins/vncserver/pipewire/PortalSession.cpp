@@ -222,16 +222,13 @@ PortalSession::PortalSession(bool persistRestoreToken, QObject* parent) :
 	m_remoteDesktop = new OrgFreedesktopPortalRemoteDesktopInterface(PortalService, PortalObjectPath, m_sessionBus, this);
 	m_screenCast = new OrgFreedesktopPortalScreenCastInterface(PortalService, PortalObjectPath, m_sessionBus, this);
 
-	// persist_mode 2 only pays off across server runs if the token outlives this process; a
-	// token left from when persistence was enabled is removed so it no longer grants anything
-	if (m_persistRestoreToken)
-	{
-		loadRestoreToken();
-	}
-	else
+	// a token left from when persistence was enabled is removed so it no longer grants anything
+	if (m_persistRestoreToken == false)
 	{
 		removeRestoreTokenFiles();
 	}
+
+	detectPersistenceSupport();
 }
 
 
@@ -251,6 +248,8 @@ void PortalSession::start()
 	}
 	// a failed session may still be open at the portal
 	close();
+	// the portal may not have been reachable before
+	detectPersistenceSupport();
 	m_inputDispatcher.reset();
 	m_pipewireFd = -1;
 	m_pipeWireNodeId = 0;
@@ -289,6 +288,44 @@ void PortalSession::close()
 	}
 
 	setState(State::Idle);
+}
+
+
+
+void PortalSession::detectPersistenceSupport()
+{
+	if (m_portalVersion > 0)
+	{
+		return;
+	}
+
+	auto call = QDBusMessage::createMethodCall(PortalService, PortalObjectPath,
+											   QStringLiteral("org.freedesktop.DBus.Properties"), QStringLiteral("Get"));
+	call << m_remoteDesktop->interface() << QStringLiteral("version");
+
+	const QDBusReply<QVariant> reply = m_sessionBus.call(call, QDBus::Block, PropertyCallTimeout);
+	if (reply.isValid() == false || reply.value().toUInt() == 0)
+	{
+		vWarning() << "could not read the version of the RemoteDesktop portal:" << reply.error().message();
+		return;
+	}
+
+	m_portalVersion = reply.value().toUInt();
+	vDebug() << "RemoteDesktop portal version" << m_portalVersion;
+
+	if (isPersistenceSupported() == false)
+	{
+		vInfo() << "the RemoteDesktop portal (version" << m_portalVersion << ") can't remember screen sharing approvals"
+				<< "on this system (needs xdg-desktop-portal >= 1.17, e.g. not on Ubuntu 22.04 / GNOME 42),"
+				<< "so the approval is asked for on every start";
+		return;
+	}
+
+	// persist_mode 2 only pays off across server runs if the token outlives this process
+	if (m_persistRestoreToken)
+	{
+		loadRestoreToken();
+	}
 }
 
 
@@ -334,11 +371,17 @@ void PortalSession::selectDevices()
 	options[QStringLiteral("handle_token")] = token;
 	// Request keyboard + pointer devices (1=keyboard, 2=pointer, 3=both)
 	options[QStringLiteral("types")] = QVariant::fromValue<uint>(3u);
-	// persist_mode 2 = persist until explicitly revoked
-	options[QStringLiteral("persist_mode")] = QVariant::fromValue<uint>(2u);
-	if (!m_restoreToken.isEmpty())
+	// RemoteDesktop version 1 doesn't know these options
+	if (isPersistenceSupported())
 	{
-		options[QStringLiteral("restore_token")] = m_restoreToken;
+		// persist_mode 2 = persist until explicitly revoked; without persisting the token to a file,
+		// it still spares the dialog when the session is restarted by this process
+		options[QStringLiteral("persist_mode")] = QVariant::fromValue<uint>(2u);
+		if (m_restoreToken.isEmpty() == false)
+		{
+			vInfo() << "restoring the screen sharing session with the stored approval";
+			options[QStringLiteral("restore_token")] = m_restoreToken;
+		}
 	}
 
 	connectResponseSignal(makeRequestPath(token));

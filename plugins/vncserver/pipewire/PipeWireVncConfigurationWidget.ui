@@ -28,7 +28,7 @@
    <item>
     <widget class="QLabel" name="persistRestoreTokenNote">
      <property name="text">
-      <string>The approval token is stored in the user's state directory. Any program running as the same user can read it and share the screen without asking.</string>
+      <string>The approval is remembered where the portal supports it (xdg-desktop-portal 1.17 or newer, e.g. GNOME 45 or newer). Its token is kept in the user's state directory and readable only by the user, but like the approval the portal stores itself, any program running as the same user can use it to share the screen without asking.</string>
      </property>
      <property name="wordWrap">
       <bool>true</bool>
