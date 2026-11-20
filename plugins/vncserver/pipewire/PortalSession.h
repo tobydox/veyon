@@ -153,16 +153,35 @@ public:
 	 */
 	static QString legacyRestoreTokenFilePath();
 
+	/**
+	 * @brief Whether a restore token is at hand, i.e. the next start shouldn't ask for approval.
+	 */
+	bool hasRestoreToken() const { return m_restoreToken.isEmpty() == false; }
+
+	/**
+	 * @brief Whether the session's screen is locked, according to the screen saver service of
+	 * GNOME or the freedesktop.org one (e.g. KDE Plasma); false if neither can be asked.
+	 *
+	 * GNOME closes all screen sharing sessions while locked and refuses new ones, which would also
+	 * use up the restore token, so the session is only restarted once unlocked.
+	 */
+	bool isScreenLocked() const;
+
 Q_SIGNALS:
 	void started();
 	void failed();
+	// the portal closed the session, e.g. because the screen got locked or the user stopped
+	// sharing the screen; the state is Failed afterwards
+	void closedByPortal();
 
 private Q_SLOTS:
 	void onPortalResponse(uint response, const QVariantMap& results);
+	void onSessionClosed(const QVariantMap& details);
 
 private:
 	static constexpr int RegistryCallTimeout = 5000;
 	static constexpr int PropertyCallTimeout = 5000;
+	static constexpr int ScreenSaverCallTimeout = 1000;
 
 	// portal >= 1.20: app ID of this connection (org.freedesktop.host.portal.Registry)
 	void registerHostAppId(const QString& appId);
@@ -204,6 +223,8 @@ private:
 
 	void connectResponseSignal(const QString& requestPath);
 	void disconnectResponseSignal();
+	void connectSessionClosedSignal();
+	void disconnectSessionClosedSignal();
 
 	void loadRestoreToken();
 	bool storeRestoreToken() const;
@@ -213,6 +234,8 @@ private:
 
 	void setState(State s);
 	void fail();
+	// after an attempt with the restore token that didn't start the session
+	void dropUnusableRestoreToken();
 
 	QString makeRequestToken() const;
 	QString senderToken() const;
@@ -237,6 +260,7 @@ private:
 	PortalStreamGeometry m_streamGeometry;
 	PortalPointerMappingMode m_pointerMappingMode{PortalPointerMappingMode::Scale};
 	QString m_connectedRequestPath;
+	QString m_connectedSessionPath;
 
 	// inputs pressed without a release the portal accepted, with the sequence number of the press
 	QHash<quint64, quint64> m_heldInputs;

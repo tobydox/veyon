@@ -34,6 +34,8 @@ PipeWireCaptureServer::PipeWireCaptureServer(bool persistRestoreToken, QObject* 
 	QObject(parent),
 	m_persistRestoreToken(persistRestoreToken)
 {
+	m_restartTimer.setSingleShot(true);
+	connect(&m_restartTimer, &QTimer::timeout, this, [this]() { m_shouldRestart = true; });
 }
 
 
@@ -72,6 +74,8 @@ bool PipeWireCaptureServer::run(const QString& socketPath, const Veyon::Crypto::
 			Qt::QueuedConnection);
 	connect(m_portalSession, &PortalSession::failed, this, &PipeWireCaptureServer::onPortalFailed,
 			Qt::QueuedConnection);
+	connect(m_portalSession, &PortalSession::closedByPortal, this, &PipeWireCaptureServer::onPortalClosed,
+			Qt::QueuedConnection);
 
 	// PipeWireFramebuffer consumes the PipeWire stream and feeds the rfbScreen.
 	m_framebuffer = new PipeWireFramebuffer(&m_screenMutex);
@@ -80,8 +84,8 @@ bool PipeWireCaptureServer::run(const QString& socketPath, const Veyon::Crypto::
 	connect(m_framebuffer, &PipeWireFramebuffer::frameSizeChanged,
 			this, &PipeWireCaptureServer::onFrameSizeChanged, Qt::QueuedConnection);
 
-	// Start the portal flow asynchronously
-	m_portalSession->start();
+	// Start the portal flow asynchronously, unless the screen is locked
+	m_shouldRestart = true;
 
 	// Drive the Qt event loop (portal DBus responses) and rfb clients
 	while (m_serverRunning)
@@ -98,8 +102,7 @@ bool PipeWireCaptureServer::run(const QString& socketPath, const Veyon::Crypto::
 		if (m_shouldRestart)
 		{
 			m_shouldRestart = false;
-			vInfo() << "Restarting XDG Portal session";
-			m_portalSession->start();
+			restartSession();
 		}
 
 		QThread::msleep(10);
@@ -123,7 +126,7 @@ void PipeWireCaptureServer::onPortalStarted()
 	if (!m_framebuffer->open(fd, nodeId, m_rfbScreen))
 	{
 		vCritical() << "Failed to open PipeWire framebuffer – will retry";
-		QTimer::singleShot(5000, this, [this]() { m_shouldRestart = true; });
+		scheduleRestart(FailedSessionRestartDelay);
 	}
 }
 
@@ -138,7 +141,26 @@ void PipeWireCaptureServer::onPortalFailed()
 		m_framebuffer->close();
 	}
 
-	QTimer::singleShot(5000, this, [this]() { m_shouldRestart = true; });
+	scheduleRestart(FailedSessionRestartDelay);
+}
+
+void PipeWireCaptureServer::onPortalClosed()
+{
+	if (m_portalSession->hasRestoreToken())
+	{
+		vInfo() << "XDG Portal session closed by the portal – restoring it with the stored approval in 5 s";
+	}
+	else
+	{
+		vInfo() << "XDG Portal session closed by the portal – restarting it in 5 s, which asks for approval";
+	}
+
+	if (m_framebuffer)
+	{
+		m_framebuffer->close();
+	}
+
+	scheduleRestart(FailedSessionRestartDelay);
 }
 
 void PipeWireCaptureServer::onStreamEnded()
@@ -167,7 +189,44 @@ void PipeWireCaptureServer::closeAndRestartSession()
 		m_portalSession->close();
 	}
 
-	QTimer::singleShot(2000, this, [this]() { m_shouldRestart = true; });
+	scheduleRestart(EndedStreamRestartDelay);
+}
+
+void PipeWireCaptureServer::scheduleRestart(int delay)
+{
+	m_restartTimer.start(delay);
+}
+
+void PipeWireCaptureServer::restartSession()
+{
+	// GNOME refuses screen sharing while the screen is locked, and an attempt with the restore token
+	// would use it up, so that the approval would be asked for again after unlocking
+	if (m_portalSession->isScreenLocked())
+	{
+		if (m_waitingForUnlock == false)
+		{
+			vInfo() << "screen is locked – starting the XDG Portal session once it is unlocked";
+			m_waitingForUnlock = true;
+		}
+		scheduleRestart(FailedSessionRestartDelay);
+		return;
+	}
+
+	if (m_waitingForUnlock)
+	{
+		vInfo() << "screen is unlocked";
+		m_waitingForUnlock = false;
+	}
+
+	if (m_portalSession->hasRestoreToken())
+	{
+		vInfo() << "Starting XDG Portal session with the stored approval";
+	}
+	else
+	{
+		vInfo() << "Starting XDG Portal session";
+	}
+	m_portalSession->start();
 }
 
 // ---------------------------------------------------------------------------

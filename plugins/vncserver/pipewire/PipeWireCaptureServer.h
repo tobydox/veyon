@@ -5,6 +5,7 @@
 
 #include <QMutex>
 #include <QObject>
+#include <QTimer>
 
 #include "SecureBuffer.h"
 
@@ -54,10 +55,17 @@ public:
 private Q_SLOTS:
 	void onPortalStarted();
 	void onPortalFailed();
+	void onPortalClosed();
 	void onStreamEnded();
 	void onFrameSizeChanged(QSize size);
 
 private:
+	// delays before restarting the portal session
+	static constexpr int FailedSessionRestartDelay = 5000;
+	static constexpr int EndedStreamRestartDelay = 2000;
+
+	void scheduleRestart(int delay);
+	void restartSession();
 	void closeAndRestartSession();
 	bool initVncServer(const Veyon::Crypto::SecureBuffer& vncPassword);
 	bool listenOnSocket(const QString& socketPath);
@@ -93,4 +101,7 @@ private:
 
 	bool m_serverRunning{false};
 	bool m_shouldRestart{false};
+	// a single pending restart, however many events asked for one
+	QTimer m_restartTimer;
+	bool m_waitingForUnlock{false};
 };

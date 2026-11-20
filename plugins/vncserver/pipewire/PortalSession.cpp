@@ -282,6 +282,8 @@ void PortalSession::close()
 	m_lastPointerY = 0;
 
 	disconnectResponseSignal();
+	// the portal doesn't emit Closed for Close(), but it must not be taken for one closing on its own
+	disconnectSessionClosedSignal();
 
 	if (!m_sessionHandle.isEmpty())
 	{
@@ -519,6 +521,95 @@ void PortalSession::disconnectResponseSignal()
 
 
 
+void PortalSession::connectSessionClosedSignal()
+{
+	disconnectSessionClosedSignal();
+
+	if (m_sessionBus.connect(PortalService, m_sessionHandle, QStringLiteral("org.freedesktop.portal.Session"),
+							 QStringLiteral("Closed"), this, SLOT(onSessionClosed(QVariantMap))))
+	{
+		m_connectedSessionPath = m_sessionHandle;
+	}
+	else
+	{
+		vWarning() << "could not connect to the Closed signal of the portal session";
+	}
+}
+
+
+
+void PortalSession::disconnectSessionClosedSignal()
+{
+	if (m_connectedSessionPath.isEmpty() == false)
+	{
+		m_sessionBus.disconnect(PortalService, m_connectedSessionPath, QStringLiteral("org.freedesktop.portal.Session"),
+								QStringLiteral("Closed"), this, SLOT(onSessionClosed(QVariantMap)));
+		m_connectedSessionPath.clear();
+	}
+}
+
+
+
+void PortalSession::onSessionClosed(const QVariantMap& details)
+{
+	Q_UNUSED(details)
+
+	vInfo() << "the portal closed the screen sharing session (e.g. screen locked or sharing stopped by the user)";
+
+	// nothing left to close at the portal
+	m_sessionHandle.clear();
+	close();
+
+	// a running session keeps the token valid, the portal stored it with Start
+	dropUnusableRestoreToken();
+	setState(State::Failed);
+	Q_EMIT closedByPortal();
+}
+
+
+
+bool PortalSession::isScreenLocked() const
+{
+	const auto busInterface = m_sessionBus.interface();
+	if (busInterface == nullptr)
+	{
+		return false;
+	}
+
+	struct ScreenSaver
+	{
+		QString service;
+		QString path;
+	};
+	// gnome-shell, and e.g. KWin/ksmserver, xfce4-screensaver
+	static const ScreenSaver screenSavers[] = {
+		{QStringLiteral("org.gnome.ScreenSaver"), QStringLiteral("/org/gnome/ScreenSaver")},
+		{QStringLiteral("org.freedesktop.ScreenSaver"), QStringLiteral("/org/freedesktop/ScreenSaver")},
+	};
+
+	for (const auto& screenSaver : screenSavers)
+	{
+		// only ask running services, the bus could start one otherwise
+		const QDBusReply<bool> registered = busInterface->isServiceRegistered(screenSaver.service);
+		if (registered.isValid() == false || registered.value() == false)
+		{
+			continue;
+		}
+
+		const auto call = QDBusMessage::createMethodCall(screenSaver.service, screenSaver.path, screenSaver.service,
+														 QStringLiteral("GetActive"));
+		const QDBusReply<bool> active = m_sessionBus.call(call, QDBus::Block, ScreenSaverCallTimeout);
+		if (active.isValid())
+		{
+			return active.value();
+		}
+	}
+
+	return false;
+}
+
+
+
 void PortalSession::onPortalResponse(uint response, const QVariantMap& results)
 {
 	disconnectResponseSignal();
@@ -546,6 +637,7 @@ void PortalSession::onPortalResponse(uint response, const QVariantMap& results)
 			return;
 		}
 		vDebug() << "Portal session created:" << m_sessionHandle;
+		connectSessionClosedSignal();
 		selectDevices();
 		break;
 	}
@@ -853,6 +945,15 @@ void PortalSession::setState(State s)
 
 void PortalSession::fail()
 {
+	dropUnusableRestoreToken();
+	setState(State::Failed);
+	Q_EMIT failed();
+}
+
+
+
+void PortalSession::dropUnusableRestoreToken()
+{
 	// the portal deleted its entry for the token when it was sent and only stores it again with a
 	// successful Start
 	if (m_restoringSession)
@@ -862,9 +963,6 @@ void PortalSession::fail()
 				   "no longer valid and asked for again on the next start";
 		dropRestoreToken();
 	}
-
-	setState(State::Failed);
-	Q_EMIT failed();
 }
 
 QString PortalSession::makeRequestToken() const
