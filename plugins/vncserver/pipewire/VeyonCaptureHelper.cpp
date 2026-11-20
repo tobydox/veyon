@@ -49,9 +49,10 @@ int main(int argc, char** argv)
 
 	VeyonCore::setupApplicationParameters();
 
-	// the portal permission store and the KDE pre-authorization use the app ID of the server; set it
-	// before constructing QGuiApplication since Qt >= 6.10 registers it with xdg-desktop-portal >= 1.20
-	// right away and the portal refuses changing it afterwards
+	// the portal permission store (restore tokens) and the KDE pre-authorization use the app ID of
+	// the server; set it before constructing QGuiApplication since Qt >= 6.10 registers it with
+	// xdg-desktop-portal >= 1.19.4 right away and the portal refuses changing it afterwards;
+	// PortalSession registers it itself otherwise
 	QGuiApplication::setDesktopFileName(QStringLiteral("io.veyon.veyon-server"));
 	QGuiApplication app(argc, argv);
 

@@ -183,7 +183,9 @@ private:
 	static constexpr int PropertyCallTimeout = 5000;
 	static constexpr int ScreenSaverCallTimeout = 1000;
 
-	// portal >= 1.20: app ID of this connection (org.freedesktop.host.portal.Registry)
+	static QDBusConnection portalConnection();
+	// portal >= 1.19.4: app ID of this connection (org.freedesktop.host.portal.Registry), once per
+	// connection and before any other portal call
 	void registerHostAppId(const QString& appId);
 	// reads the version of the RemoteDesktop interface unless known already
 	void detectPersistenceSupport();

@@ -159,39 +159,68 @@ bool removeOwnFile(const QString& filePath)
 
 
 
+QDBusConnection PortalSession::portalConnection()
+{
+	// a session bus connection of its own, so that registerHostAppId() surely comes first on it:
+	// Qt (< 6.10) may call the portal on the shared connection already while constructing
+	// QGuiApplication, e.g. the GNOME platform theme reading the Settings portal, after which the
+	// portal has derived the app ID of that connection and refuses Register(); Qt >= 6.10 registers
+	// the shared connection itself
+	return QDBusConnection::connectToBus(QDBusConnection::SessionBus, QStringLiteral("veyon-portal-session"));
+}
+
+
+
 void PortalSession::registerHostAppId(const QString& appId)
 {
-	auto call = QDBusMessage::createMethodCall(QStringLiteral("org.freedesktop.portal.Desktop"),
-											   QStringLiteral("/org/freedesktop/host/portal/Registry"),
+	// the portal accepts only one registration per connection, and all PortalSession instances use
+	// the same one
+	static bool registered = false;
+	if (registered || appId.isEmpty())
+	{
+		return;
+	}
+
+	// exported on the same object as all portal interfaces
+	auto call = QDBusMessage::createMethodCall(PortalService, PortalObjectPath,
 											   QStringLiteral("org.freedesktop.host.portal.Registry"),
 											   QStringLiteral("Register"));
 	call << appId << QVariantMap{};
 
 	const auto reply = m_sessionBus.call(call, QDBus::Block, RegistryCallTimeout);
-	if (reply.type() == QDBusMessage::ErrorMessage)
+	if (reply.type() != QDBusMessage::ErrorMessage)
 	{
-		if (reply.errorName() == QLatin1String("org.freedesktop.DBus.Error.UnknownMethod") ||
-			reply.errorName() == QLatin1String("org.freedesktop.DBus.Error.UnknownObject") ||
-			reply.errorName() == QLatin1String("org.freedesktop.DBus.Error.UnknownInterface"))
-		{
-			vDebug() << "xdg-desktop-portal without host app registry, app ID derived from the systemd scope";
-		}
-		else
-		{
-			// Qt >= 6.10 registers QGuiApplication::desktopFileName() itself, so a repeated
-			// registration fails harmlessly
-			vDebug() << "could not register app ID" << appId << "with xdg-desktop-portal:" << reply.errorMessage();
-		}
+		vDebug() << "registered app ID" << appId << "with xdg-desktop-portal";
+		registered = true;
 		return;
 	}
 
-	vDebug() << "registered app ID" << appId << "with xdg-desktop-portal";
+	if (reply.errorName() == QLatin1String("org.freedesktop.DBus.Error.UnknownMethod") ||
+		reply.errorName() == QLatin1String("org.freedesktop.DBus.Error.UnknownObject") ||
+		reply.errorName() == QLatin1String("org.freedesktop.DBus.Error.UnknownInterface"))
+	{
+		vDebug() << "xdg-desktop-portal < 1.19.4 without host app registry, app ID derived from the systemd scope";
+	}
+	else if (reply.errorName() == QLatin1String("org.freedesktop.portal.Error.Failed") &&
+			 reply.errorMessage().contains(QLatin1String("already associated")))
+	{
+		// e.g. by Qt >= 6.10, which registers QGuiApplication::desktopFileName() when constructing
+		// QGuiApplication, if this were the shared connection
+		vDebug() << "app ID already registered with xdg-desktop-portal on this connection";
+		registered = true;
+	}
+	else
+	{
+		// e.g. a sandboxed process; the portal derives the app ID itself then
+		vWarning() << "could not register app ID" << appId << "with xdg-desktop-portal:" << reply.errorName()
+				   << reply.errorMessage();
+	}
 }
 
 
 
 PortalSession::PortalSession(bool persistRestoreToken, QObject* parent) :
-	QObject(parent), m_sessionBus(QDBusConnection::sessionBus()), m_persistRestoreToken(persistRestoreToken)
+	QObject(parent), m_sessionBus(portalConnection()), m_persistRestoreToken(persistRestoreToken)
 {
 	// the portal is gone, does not respond or input can't keep up: release the session and let
 	// the owner restart it like after any other failure
@@ -204,12 +233,12 @@ PortalSession::PortalSession(bool persistRestoreToken, QObject* parent) :
 
 	// xdg-desktop-portal derives the app ID from the process behind the unique name of the
 	// calling connection: from its systemd unit/scope (sd_pid_get_user_unit(), "app-<id>-*.scope")
-	// or, with portal >= 1.20, from org.freedesktop.host.portal.Registry.Register() on that
+	// or, with portal >= 1.19.4, from org.freedesktop.host.portal.Registry.Register() on that
 	// connection. Well-known bus names are not consulted, so no name is registered. With portal
 	// >= 1.20 the server is started without a scope, so the app ID has to be registered here,
-	// before any other portal call on this connection; otherwise the app ID is empty and e.g.
-	// KDE's kde-authorized pre-authorization doesn't apply. Portals < 1.20 don't provide the
-	// registry and keep using the scope.
+	// before any other portal call on this connection; otherwise the app ID is empty, restore
+	// tokens are stored for the empty app ID and e.g. KDE's kde-authorized pre-authorization doesn't
+	// apply. Older portals don't provide the registry and keep using the scope.
 	registerHostAppId(appId);
 
 	// Apply KDE pre-authorization so the consent dialog can be suppressed
