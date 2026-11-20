@@ -1742,47 +1742,47 @@ Translated with DeepL</translation>
     <name>FileCollectController</name>
     <message>
         <source>The collection was cancelled.</source>
-        <translation type="unfinished"/>
+        <translation>Het verzamelen is geannuleerd.</translation>
     </message>
     <message>
         <source>The file transfer was interrupted.</source>
-        <translation type="unfinished"/>
+        <translation>De bestandsoverdracht is onderbroken.</translation>
     </message>
     <message>
         <source>The announced file size is invalid.</source>
-        <translation type="unfinished"/>
+        <translation>De aangekondigde bestandsgrootte is ongeldig.</translation>
     </message>
     <message>
         <source>The file name is not supported on this computer.</source>
-        <translation type="unfinished"/>
+        <translation>De bestandsnaam wordt op deze computer niet ondersteund.</translation>
     </message>
     <message>
         <source>The output directory could not be created.</source>
-        <translation type="unfinished"/>
+        <translation>De uitvoermap kon niet worden aangemaakt.</translation>
     </message>
     <message>
         <source>The output path is outside of the collection directory.</source>
-        <translation type="unfinished"/>
+        <translation>Het uitvoerpad ligt buiten de verzamelmap.</translation>
     </message>
     <message>
         <source>The output file could not be opened for writing. It may be a link or belong to another user.</source>
-        <translation type="unfinished"/>
+        <translation>Het uitvoerbestand kon niet worden geopend om te schrijven. Het kan een koppeling zijn of van een andere gebruiker zijn.</translation>
     </message>
     <message>
         <source>The file is larger than announced.</source>
-        <translation type="unfinished"/>
+        <translation>Het bestand is groter dan aangekondigd.</translation>
     </message>
     <message>
         <source>The output file could not be written.</source>
-        <translation type="unfinished"/>
+        <translation>Het uitvoerbestand kon niet worden geschreven.</translation>
     </message>
     <message>
         <source>The file was skipped on the computer because it is still open in an application.</source>
-        <translation type="unfinished"/>
+        <translation>Het bestand is op de computer overgeslagen omdat het nog geopend is in een toepassing.</translation>
     </message>
     <message>
         <source>The file transfer was not started.</source>
-        <translation type="unfinished"/>
+        <translation>De bestandsoverdracht is niet gestart.</translation>
     </message>
 </context>
 <context>
@@ -1869,15 +1869,15 @@ Translated with DeepL</translation>
     </message>
     <message>
         <source>&lt;b&gt;Warning:&lt;/b&gt; The collection was cancelled. Files that were not collected are marked in the list above.</source>
-        <translation type="unfinished"/>
+        <translation>&lt;b&gt;Waarschuwing:&lt;/b&gt; Het verzamelen is geannuleerd. Bestanden die niet zijn verzameld, zijn gemarkeerd in de lijst hierboven.</translation>
     </message>
     <message>
         <source>&lt;b&gt;Warning:&lt;/b&gt; 1 file could not be collected. It is marked in the list above, the reason is shown as tooltip.</source>
-        <translation type="unfinished"/>
+        <translation>&lt;b&gt;Waarschuwing:&lt;/b&gt; 1 bestand kon niet worden verzameld. Het is gemarkeerd in de lijst hierboven, de reden wordt als tooltip weergegeven.</translation>
     </message>
     <message>
         <source>&lt;b&gt;Warning:&lt;/b&gt; %1 files could not be collected. They are marked in the list above, the reason is shown as tooltip.</source>
-        <translation type="unfinished"/>
+        <translation>&lt;b&gt;Waarschuwing:&lt;/b&gt; %1 bestanden konden niet worden verzameld. Ze zijn gemarkeerd in de lijst hierboven, de reden wordt als tooltip weergegeven.</translation>
     </message>
 </context>
 <context>
@@ -1896,15 +1896,15 @@ Translated with DeepL</translation>
     </message>
     <message>
         <source>1 file could not be collected.</source>
-        <translation type="unfinished"/>
+        <translation>1 bestand kon niet worden verzameld.</translation>
     </message>
     <message>
         <source>%1 files could not be collected.</source>
-        <translation type="unfinished"/>
+        <translation>%1 bestanden konden niet worden verzameld.</translation>
     </message>
     <message>
         <source>%1 (%2 not collected)</source>
-        <translation type="unfinished"/>
+        <translation>%1 (%2 niet verzameld)</translation>
     </message>
 </context>
 <context>
@@ -1919,7 +1919,7 @@ Translated with DeepL</translation>
     </message>
     <message>
         <source>Allow master to choose the destination directory</source>
-        <translation type="unfinished"/>
+        <translation>Veyon Master toestaan de doelmap te kiezen</translation>
     </message>
     <message>
         <source>Settings for collecting files</source>
@@ -2050,7 +2050,7 @@ Translated with DeepL</translation>
     <name>FileTransferController</name>
     <message>
         <source>Could not open file %1 for reading. Please check your permissions. The file will be skipped, remaining files will still be transferred.</source>
-        <translation type="unfinished"/>
+        <translation>Kon bestand %1 niet openen om te lezen. Controleer uw rechten. Het bestand wordt overgeslagen, de overige bestanden worden nog steeds overgedragen.</translation>
     </message>
 </context>
 <context>
@@ -2097,7 +2097,7 @@ Translated with DeepL</translation>
     </message>
     <message>
         <source>File transfer error</source>
-        <translation type="unfinished"/>
+        <translation>Fout bij bestandsoverdracht</translation>
     </message>
 </context>
 <context>
@@ -2148,15 +2148,15 @@ Translated with DeepL</translation>
     </message>
     <message>
         <source>Could not receive the file because the destination directory is invalid.</source>
-        <translation type="unfinished"/>
+        <translation>Kon het bestand niet ontvangen omdat de doelmap ongeldig is.</translation>
     </message>
     <message>
         <source>Could not receive the file because the destination directory could not be created.</source>
-        <translation type="unfinished"/>
+        <translation>Kon het bestand niet ontvangen omdat de doelmap niet kon worden aangemaakt.</translation>
     </message>
     <message>
         <source>Could not receive the file because its name is invalid.</source>
-        <translation type="unfinished"/>
+        <translation>Kon het bestand niet ontvangen omdat de naam ongeldig is.</translation>
     </message>
     <message>
         <source>Could not receive file %1 as it already exists.</source>
@@ -2523,7 +2523,7 @@ Translated with DeepL</translation>
     </message>
     <message>
         <source>e.g. name, ou or description</source>
-        <translation type="unfinished"/>
+        <translation>bv. name, ou of description</translation>
     </message>
     <message>
         <source>Hostnames stored as fully qualified domain names (FQDN, e.g. myhost.example.org)</source>
@@ -2635,7 +2635,7 @@ Translated with DeepL</translation>
     </message>
     <message>
         <source>Query user groups from user attribute</source>
-        <translation type="unfinished"/>
+        <translation>Gebruikersgroepen opvragen uit gebruikersattribuut</translation>
     </message>
     <message>
         <source>Query nested user groups (supported by AD only)</source>
@@ -2683,7 +2683,7 @@ Translated with DeepL</translation>
     </message>
     <message>
         <source>List all user groups</source>
-        <translation type="unfinished"/>
+        <translation>Alle gebruikersgroepen weergeven</translation>
     </message>
     <message>
         <source>List all groups of a user</source>
@@ -2695,7 +2695,7 @@ Translated with DeepL</translation>
     </message>
     <message>
         <source>List all computers at a specific location</source>
-        <translation type="unfinished"/>
+        <translation>Alle computers op een specifieke locatie weergeven</translation>
     </message>
     <message>
         <source>Computers</source>
@@ -3239,7 +3239,7 @@ Translated with DeepL</translation>
     </message>
     <message>
         <source>Ctrl+Shift+S</source>
-        <translation type="unfinished"/>
+        <translation>Ctrl+Shift+S</translation>
     </message>
     <message>
         <source>L&amp;oad settings from file</source>
@@ -3319,7 +3319,7 @@ Translated with DeepL</translation>
     </message>
     <message>
         <source>Apply configuration (%1)</source>
-        <translation type="unfinished"/>
+        <translation>Configuratie toepassen (%1)</translation>
     </message>
     <message>
         <source>Load settings from file</source>
@@ -3331,19 +3331,19 @@ Translated with DeepL</translation>
     </message>
     <message>
         <source>Could not open the file %1 for reading: %2</source>
-        <translation type="unfinished"/>
+        <translation>Kon het bestand %1 niet openen om te lezen: %2</translation>
     </message>
     <message>
         <source>The file %1 does not contain valid settings.</source>
-        <translation type="unfinished"/>
+        <translation>Het bestand %1 bevat geen geldige instellingen.</translation>
     </message>
     <message>
         <source>Could not open the file %1 for writing: %2</source>
-        <translation type="unfinished"/>
+        <translation>Kon het bestand %1 niet openen om te schrijven: %2</translation>
     </message>
     <message>
         <source>Could not write the settings to the file %1.</source>
-        <translation type="unfinished"/>
+        <translation>Kon de instellingen niet naar het bestand %1 schrijven.</translation>
     </message>
     <message>
         <source>Do you really want to reset the local configuration and revert all settings to their defaults?</source>
@@ -3634,31 +3634,31 @@ Houd ingedrukt om een arrangement vanuit een bestand te laden of het huidige arr
     </message>
     <message>
         <source>Monitoring view</source>
-        <translation type="unfinished"/>
+        <translation>Toezichtweergave</translation>
     </message>
     <message>
         <source>Visibility mode</source>
-        <translation type="unfinished"/>
+        <translation>Zichtbaarheidsmodus</translation>
     </message>
     <message>
         <source>Aspect ratio</source>
-        <translation type="unfinished"/>
+        <translation>Beeldverhouding</translation>
     </message>
     <message>
         <source>Normal</source>
-        <translation type="unfinished"/>
+        <translation>Normaal</translation>
     </message>
     <message>
         <source>Blurred</source>
-        <translation type="unfinished"/>
+        <translation>Vervaagd</translation>
     </message>
     <message>
         <source>Hidden</source>
-        <translation type="unfinished"/>
+        <translation>Verborgen</translation>
     </message>
     <message>
         <source>Grid spacing</source>
-        <translation type="unfinished"/>
+        <translation>Roosterafstand</translation>
     </message>
     <message>
         <source>Image quality</source>
@@ -3666,23 +3666,23 @@ Houd ingedrukt om een arrangement vanuit een bestand te laden of het huidige arr
     </message>
     <message>
         <source>Display label</source>
-        <translation type="unfinished"/>
+        <translation>Weergavelabel</translation>
     </message>
     <message>
         <source>Refresh rate</source>
-        <translation type="unfinished"/>
+        <translation>Verversingsfrequentie</translation>
     </message>
     <message>
         <source>Grid sizing mode</source>
-        <translation type="unfinished"/>
+        <translation>Roostergroottemodus</translation>
     </message>
     <message>
         <source>Full-length labels (scales down all thumbnails)</source>
-        <translation type="unfinished"/>
+        <translation>Volledige labels (verkleint alle thumbnails)</translation>
     </message>
     <message>
         <source>Maximized thumbnails (truncated labels)</source>
-        <translation type="unfinished"/>
+        <translation>Gemaximaliseerde thumbnails (afgekapte labels)</translation>
     </message>
     <message>
         <source>Remote access</source>
@@ -3761,11 +3761,11 @@ Houd ingedrukt om een arrangement vanuit een bestand te laden of het huidige arr
     </message>
     <message>
         <source>Identify users</source>
-        <translation type="unfinished"/>
+        <translation>Gebruikers identificeren</translation>
     </message>
     <message>
         <source>Click this button to ask the users in guest sessions on the selected computers to enter their names again.</source>
-        <translation type="unfinished"/>
+        <translation>Klik op deze knop om de gebruikers in gastsessies op de geselecteerde computers te vragen hun naam opnieuw in te voeren.</translation>
     </message>
     <message>
         <source>Identification request</source>
@@ -3849,15 +3849,15 @@ Houd ingedrukt om een arrangement vanuit een bestand te laden of het huidige arr
     <name>PipeWireVncConfigurationWidget</name>
     <message>
         <source>PipeWire VNC server configuration</source>
-        <translation type="unfinished"/>
+        <translation>PipeWire VNC server configuratie</translation>
     </message>
     <message>
         <source>Remember the screen sharing approval across restarts</source>
-        <translation type="unfinished"/>
+        <translation>Goedkeuring voor scherm delen onthouden na herstarten</translation>
     </message>
     <message>
         <source>The approval token is stored in the user&apos;s state directory. Any program running as the same user can read it and share the screen without asking.</source>
-        <translation type="unfinished"/>
+        <translation>Het goedkeuringstoken wordt opgeslagen in de statusmap van de gebruiker. Elk programma dat als dezelfde gebruiker draait, kan het lezen en het scherm delen zonder te vragen.</translation>
     </message>
 </context>
 <context>
@@ -4312,11 +4312,11 @@ Sla je werk op en sluit alle programma&apos;s af.</translation>
     </message>
     <message>
         <source>Maximum simultaneous server connections</source>
-        <translation type="unfinished"/>
+        <translation>Maximaal aantal gelijktijdige serververbindingen</translation>
     </message>
     <message>
         <source>Limits simultaneous remote connections to protect the server against resource exhaustion.</source>
-        <translation type="unfinished"/>
+        <translation>Beperkt het aantal gelijktijdige externe verbindingen om de server te beschermen tegen uitputting van systeembronnen.</translation>
     </message>
     <message>
         <source>Hide tray icon</source>
@@ -4680,11 +4680,11 @@ Voorbeeld: [^-]*-(PC[0-9]*)</translation>
     </message>
     <message>
         <source>Title:</source>
-        <translation type="unfinished"/>
+        <translation>Titel:</translation>
     </message>
     <message>
         <source>Optional custom title for the message window</source>
-        <translation type="unfinished"/>
+        <translation>Optionele aangepaste titel voor het berichtvenster</translation>
     </message>
     <message>
         <source>Message from teacher</source>
@@ -4819,11 +4819,11 @@ Voorbeeld: [^-]*-(PC[0-9]*)</translation>
     </message>
     <message>
         <source>No command given</source>
-        <translation type="unfinished"/>
+        <translation>Geen commando opgegeven</translation>
     </message>
     <message>
         <source>Invalid command given</source>
-        <translation type="unfinished"/>
+        <translation>Ongeldig commando opgegeven</translation>
     </message>
     <message>
         <source>Plugin not licensed</source>
@@ -4835,7 +4835,7 @@ Voorbeeld: [^-]*-(PC[0-9]*)</translation>
     </message>
     <message>
         <source>Unknown command result</source>
-        <translation type="unfinished"/>
+        <translation>Onbekend commandoresultaat</translation>
     </message>
     <message>
         <source>Available modules:</source>
@@ -4967,7 +4967,7 @@ Voorbeeld: [^-]*-(PC[0-9]*)</translation>
     <name>WebApiPlugin</name>
     <message>
         <source>Show help about command</source>
-        <translation type="unfinished"/>
+        <translation>Toon hulp over commando</translation>
     </message>
     <message>
         <source>Run WebAPI server</source>
@@ -4975,7 +4975,7 @@ Voorbeeld: [^-]*-(PC[0-9]*)</translation>
     </message>
     <message>
         <source>Runs the WebAPI server in the foreground with the configured settings until the program is terminated.</source>
-        <translation type="unfinished"/>
+        <translation>Voert de WebAPI-server op de voorgrond uit met de geconfigureerde instellingen totdat het programma wordt beëindigd.</translation>
     </message>
     <message>
         <source>Failed to start WebAPI server at port %1</source>
