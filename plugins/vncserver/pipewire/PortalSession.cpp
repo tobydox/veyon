@@ -47,9 +47,9 @@ constexpr int MaximumRestoreTokenLength = 64;
 
 bool isValidRestoreToken(const QString& token)
 {
-	// xdg-desktop-portal < 1.23 generates UUIDs (QUuid would also accept one in braces), newer
+	// xdg-desktop-portal < 1.22.1 generates UUIDs (QUuid would also accept one in braces), newer
 	// versions D-Bus object path elements ([A-Za-z0-9_]) and still accept UUIDs
-	static const QRegularExpression pathElement(QStringLiteral("^[A-Za-z0-9_]+$"));
+	static const QRegularExpression pathElement(QRegularExpression::anchoredPattern(QStringLiteral("[A-Za-z0-9_]+")));
 	return (token.size() == 36 && QUuid::fromString(token).isNull() == false) ||
 		(token.size() <= MaximumRestoreTokenLength && pathElement.match(token).hasMatch());
 }
@@ -729,9 +729,15 @@ void PortalSession::onPortalResponse(uint response, const QVariantMap& results)
 	{
 		const auto restored = m_restoringSession;
 		m_restoringSession = false;
-		updateRestoreToken(results);
 
-		if (readStreams(results) == false)
+		const auto hasStream = readStreams(results);
+		// a restore without stream returns a token for the same useless restore, so don't store it
+		if (hasStream || restored == false)
+		{
+			updateRestoreToken(results);
+		}
+
+		if (hasStream == false)
 		{
 			if (restored)
 			{

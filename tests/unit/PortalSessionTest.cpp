@@ -593,7 +593,7 @@ private:
 
 	QString makeToken()
 	{
-		// alternately like xdg-desktop-portal < 1.23 (UUID) and newer versions
+		// alternately like xdg-desktop-portal < 1.22.1 (UUID) and newer versions
 		++m_tokenCount;
 		if (m_tokenCount % 2 == 0)
 		{
