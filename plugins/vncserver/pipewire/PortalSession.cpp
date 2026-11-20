@@ -17,6 +17,7 @@
 #include <QGuiApplication>
 #include <QProcess>
 #include <QRandomGenerator>
+#include <QRegularExpression>
 #include <QSaveFile>
 #include <QStandardPaths>
 #include <QUuid>
@@ -39,13 +40,16 @@ static const auto MutterRemoteDesktopService = QStringLiteral("org.gnome.Mutter.
 
 namespace {
 
-// the portal fails the whole SelectDevices call for anything but a bare UUID
-constexpr int RestoreTokenLength = 36;
+// the portal fails the whole SelectDevices call for an invalid token
+constexpr int MaximumRestoreTokenLength = 64;
 
 bool isValidRestoreToken(const QString& token)
 {
-	// QUuid would also accept one in braces
-	return token.size() == RestoreTokenLength && QUuid::fromString(token).isNull() == false;
+	// xdg-desktop-portal < 1.23 generates UUIDs (QUuid would also accept one in braces), newer
+	// versions D-Bus object path elements ([A-Za-z0-9_]) and still accept UUIDs
+	static const QRegularExpression pathElement(QStringLiteral("^[A-Za-z0-9_]+$"));
+	return (token.size() == 36 && QUuid::fromString(token).isNull() == false) ||
+		(token.size() <= MaximumRestoreTokenLength && pathElement.match(token).hasMatch());
 }
 
 
@@ -124,7 +128,7 @@ QString readRestoreTokenFile(const QString& filePath)
 			::fchmod(fd, S_IRUSR | S_IWUSR);
 		}
 
-		char buffer[RestoreTokenLength * 2]{};
+		char buffer[MaximumRestoreTokenLength + 2]{};
 		const auto size = ::read(fd, buffer, sizeof(buffer));
 		if (size > 0)
 		{
@@ -193,8 +197,7 @@ PortalSession::PortalSession(bool persistRestoreToken, QObject* parent) :
 	// the owner restart it like after any other failure
 	m_inputDispatcher.setFailureHandler([this](const QDBusError&) {
 		close();
-		setState(State::Failed);
-		Q_EMIT failed();
+		fail();
 	});
 
 	const auto appId = QGuiApplication::desktopFileName();
@@ -248,6 +251,7 @@ void PortalSession::start()
 	}
 	// a failed session may still be open at the portal
 	close();
+	m_restoringSession = false;
 	// the portal may not have been reachable before
 	detectPersistenceSupport();
 	m_inputDispatcher.reset();
@@ -353,8 +357,7 @@ void PortalSession::createSession()
 		{
 			vCritical() << "CreateSession call failed:" << reply.error().message();
 			disconnectResponseSignal();
-			setState(State::Failed);
-			Q_EMIT failed();
+			fail();
 		}
 	});
 }
@@ -381,6 +384,8 @@ void PortalSession::selectDevices()
 		{
 			vInfo() << "restoring the screen sharing session with the stored approval";
 			options[QStringLiteral("restore_token")] = m_restoreToken;
+			// the portal deletes its entry for the token now and stores it again only if Start succeeds
+			m_restoringSession = true;
 		}
 	}
 
@@ -394,8 +399,7 @@ void PortalSession::selectDevices()
 		{
 			vCritical() << "SelectDevices call failed:" << reply.error().message();
 			disconnectResponseSignal();
-			setState(State::Failed);
-			Q_EMIT failed();
+			fail();
 		}
 	});
 }
@@ -427,8 +431,7 @@ void PortalSession::selectSources()
 		{
 			vCritical() << "SelectSources call failed:" << reply.error().message();
 			disconnectResponseSignal();
-			setState(State::Failed);
-			Q_EMIT failed();
+			fail();
 		}
 	});
 }
@@ -458,8 +461,7 @@ void PortalSession::startSession()
 		{
 			vCritical() << "Start call failed:" << reply.error().message();
 			disconnectResponseSignal();
-			setState(State::Failed);
-			Q_EMIT failed();
+			fail();
 		}
 	});
 }
@@ -475,8 +477,7 @@ void PortalSession::openPipeWireRemote()
 	if (pending.isError())
 	{
 		vCritical() << "OpenPipeWireRemote failed:" << pending.error().message();
-		setState(State::Failed);
-		Q_EMIT failed();
+		fail();
 		return;
 	}
 
@@ -485,8 +486,7 @@ void PortalSession::openPipeWireRemote()
 	if (m_pipewireFd < 0)
 	{
 		vCritical() << "dup() of PipeWire FD failed";
-		setState(State::Failed);
-		Q_EMIT failed();
+		fail();
 		return;
 	}
 
@@ -527,20 +527,8 @@ void PortalSession::onPortalResponse(uint response, const QVariantMap& results)
 	{
 		vWarning() << "Portal request in state" << static_cast<int>(m_state)
 				   << "denied/cancelled (response=" << response << ")";
-		setState(State::Failed);
-		Q_EMIT failed();
+		fail();
 		return;
-	}
-
-	// Save restore token whenever the portal provides one
-	if (results.contains(QStringLiteral("restore_token")))
-	{
-		m_restoreToken = results.value(QStringLiteral("restore_token")).toString();
-		vDebug() << "Got portal restore_token";
-		if (m_persistRestoreToken)
-		{
-			storeRestoreToken();
-		}
 	}
 
 	switch (m_state)
@@ -554,8 +542,7 @@ void PortalSession::onPortalResponse(uint response, const QVariantMap& results)
 		if (m_sessionHandle.isEmpty())
 		{
 			vCritical() << "CreateSession response missing session_handle";
-			setState(State::Failed);
-			Q_EMIT failed();
+			fail();
 			return;
 		}
 		vDebug() << "Portal session created:" << m_sessionHandle;
@@ -572,9 +559,33 @@ void PortalSession::onPortalResponse(uint response, const QVariantMap& results)
 		break;
 
 	case State::Starting:
-		readStreams(results);
+	{
+		const auto restored = m_restoringSession;
+		m_restoringSession = false;
+		updateRestoreToken(results);
+
+		if (readStreams(results) == false)
+		{
+			if (restored)
+			{
+				// xdg-desktop-portal-gnome restores a session without its monitor (e.g. replaced or
+				// connected elsewhere) instead of asking again; once without the token shows the dialog
+				vWarning() << "the portal restored the screen sharing session without a usable stream - dropping "
+							  "the stored approval and asking for it again";
+				dropRestoreToken();
+				close();
+				start();
+				return;
+			}
+
+			vCritical() << "the portal started the screen sharing session without a usable stream";
+			fail();
+			return;
+		}
+
 		openPipeWireRemote();
 		break;
+	}
 
 	default:
 		vWarning() << "Unexpected portal response in state" << static_cast<int>(m_state);
@@ -582,7 +593,38 @@ void PortalSession::onPortalResponse(uint response, const QVariantMap& results)
 	}
 }
 
-void PortalSession::readStreams(const QVariantMap& results)
+void PortalSession::updateRestoreToken(const QVariantMap& results)
+{
+	if (isPersistenceSupported() == false)
+	{
+		return;
+	}
+
+	// the portal may hand out a new token on every start, so always replace the old one
+	const auto token = results.value(QStringLiteral("restore_token")).toString();
+	if (isValidRestoreToken(token))
+	{
+		if (token != m_restoreToken)
+		{
+			vDebug() << "got a new portal restore token";
+		}
+		m_restoreToken = token;
+		if (m_persistRestoreToken)
+		{
+			storeRestoreToken();
+		}
+	}
+	else if (m_restoreToken.isEmpty() == false)
+	{
+		// e.g. the user unticked "Remember This Selection"; the portal deleted the old entry already
+		vInfo() << "the portal returned no restore token - the screen sharing approval is not remembered";
+		dropRestoreToken();
+	}
+}
+
+
+
+bool PortalSession::readStreams(const QVariantMap& results)
 {
 	// a(ua{sv}): PipeWire node ID and properties of each stream; only one monitor is selected
 	const auto streams = results.value(QStringLiteral("streams")).value<QDBusArgument>();
@@ -612,11 +654,18 @@ void PortalSession::readStreams(const QVariantMap& results)
 			 << "stream position:" << m_streamGeometry.position << "size:" << m_streamGeometry.size
 			 << "pointer mapping:" << (m_pointerMappingMode == PortalPointerMappingMode::Scale ? "scale" : "clamp only");
 
+	if (m_pipeWireNodeId == 0)
+	{
+		return false;
+	}
+
 	if (m_streamGeometry.size.isEmpty())
 	{
 		vWarning() << "the portal reported no stream size - pointer positions are passed unscaled, "
 					  "xdg-desktop-portal >= 1.14 rejects all of them";
 	}
+
+	return true;
 }
 
 
@@ -672,7 +721,6 @@ std::optional<QPoint> PortalSession::readIntPair(const QVariant& value)
 // ---------------------------------------------------------------------------
 // Restore token persistence
 // ---------------------------------------------------------------------------
-
 
 
 
@@ -776,6 +824,14 @@ bool PortalSession::storeRestoreToken() const
 
 
 
+void PortalSession::dropRestoreToken()
+{
+	m_restoreToken.clear();
+	removeOwnFile(restoreTokenFilePath());
+}
+
+
+
 void PortalSession::removeRestoreTokenFiles()
 {
 	for (const auto& filePath : {restoreTokenFilePath(), legacyRestoreTokenFilePath()})
@@ -791,6 +847,24 @@ void PortalSession::removeRestoreTokenFiles()
 void PortalSession::setState(State s)
 {
 	m_state = s;
+}
+
+
+
+void PortalSession::fail()
+{
+	// the portal deleted its entry for the token when it was sent and only stores it again with a
+	// successful Start
+	if (m_restoringSession)
+	{
+		m_restoringSession = false;
+		vInfo() << "the portal session failed while being restored - the stored screen sharing approval is "
+				   "no longer valid and asked for again on the next start";
+		dropRestoreToken();
+	}
+
+	setState(State::Failed);
+	Q_EMIT failed();
 }
 
 QString PortalSession::makeRequestToken() const

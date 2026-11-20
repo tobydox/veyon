@@ -173,7 +173,10 @@ private:
 	void selectSources();
 	void startSession();
 	void openPipeWireRemote();
-	void readStreams(const QVariantMap& results);
+	// replaces the token with the one from the Start response, see restoreTokenFilePath()
+	void updateRestoreToken(const QVariantMap& results);
+	// false if there is no usable stream
+	bool readStreams(const QVariantMap& results);
 
 	// a key (keysym) or button (evdev code) pressed by the VNC client
 	struct HeldInput
@@ -204,9 +207,12 @@ private:
 
 	void loadRestoreToken();
 	bool storeRestoreToken() const;
+	// in memory and on disk
+	void dropRestoreToken();
 	static void removeRestoreTokenFiles();
 
 	void setState(State s);
+	void fail();
 
 	QString makeRequestToken() const;
 	QString senderToken() const;
@@ -223,6 +229,8 @@ private:
 	const bool m_persistRestoreToken;
 	// 0 = not known yet
 	uint m_portalVersion{0};
+	// the restore token has been sent with the current attempt
+	bool m_restoringSession{false};
 	State m_state{State::Idle};
 	int m_pipewireFd{-1};
 	quint32 m_pipeWireNodeId{0};
