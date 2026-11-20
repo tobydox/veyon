@@ -1740,47 +1740,47 @@ Se till att namnen på de nycklar som tillhör varandra är identiska på alla d
     <name>FileCollectController</name>
     <message>
         <source>The collection was cancelled.</source>
-        <translation type="unfinished"/>
+        <translation>Insamlingen avbröts.</translation>
     </message>
     <message>
         <source>The file transfer was interrupted.</source>
-        <translation type="unfinished"/>
+        <translation>Filöverföringen avbröts.</translation>
     </message>
     <message>
         <source>The announced file size is invalid.</source>
-        <translation type="unfinished"/>
+        <translation>Den angivna filstorleken är ogiltig.</translation>
     </message>
     <message>
         <source>The file name is not supported on this computer.</source>
-        <translation type="unfinished"/>
+        <translation>Filnamnet stöds inte på den här datorn.</translation>
     </message>
     <message>
         <source>The output directory could not be created.</source>
-        <translation type="unfinished"/>
+        <translation>Utdatakatalogen kunde inte skapas.</translation>
     </message>
     <message>
         <source>The output path is outside of the collection directory.</source>
-        <translation type="unfinished"/>
+        <translation>Utdatasökvägen ligger utanför insamlingskatalogen.</translation>
     </message>
     <message>
         <source>The output file could not be opened for writing. It may be a link or belong to another user.</source>
-        <translation type="unfinished"/>
+        <translation>Utdatafilen kunde inte öppnas för skrivning. Den kan vara en länk eller tillhöra en annan användare.</translation>
     </message>
     <message>
         <source>The file is larger than announced.</source>
-        <translation type="unfinished"/>
+        <translation>Filen är större än angivet.</translation>
     </message>
     <message>
         <source>The output file could not be written.</source>
-        <translation type="unfinished"/>
+        <translation>Utdatafilen kunde inte skrivas.</translation>
     </message>
     <message>
         <source>The file was skipped on the computer because it is still open in an application.</source>
-        <translation type="unfinished"/>
+        <translation>Filen hoppades över på datorn eftersom den fortfarande är öppen i ett program.</translation>
     </message>
     <message>
         <source>The file transfer was not started.</source>
-        <translation type="unfinished"/>
+        <translation>Filöverföringen startades inte.</translation>
     </message>
 </context>
 <context>
@@ -1867,15 +1867,15 @@ Se till att namnen på de nycklar som tillhör varandra är identiska på alla d
     </message>
     <message>
         <source>&lt;b&gt;Warning:&lt;/b&gt; The collection was cancelled. Files that were not collected are marked in the list above.</source>
-        <translation type="unfinished"/>
+        <translation>&lt;b&gt;Varning:&lt;/b&gt; Insamlingen avbröts. Filer som inte samlades in är markerade i listan ovan.</translation>
     </message>
     <message>
         <source>&lt;b&gt;Warning:&lt;/b&gt; 1 file could not be collected. It is marked in the list above, the reason is shown as tooltip.</source>
-        <translation type="unfinished"/>
+        <translation>&lt;b&gt;Varning:&lt;/b&gt; 1 fil kunde inte samlas in. Den är markerad i listan ovan, orsaken visas som verktygstips.</translation>
     </message>
     <message>
         <source>&lt;b&gt;Warning:&lt;/b&gt; %1 files could not be collected. They are marked in the list above, the reason is shown as tooltip.</source>
-        <translation type="unfinished"/>
+        <translation>&lt;b&gt;Varning:&lt;/b&gt; %1 filer kunde inte samlas in. De är markerade i listan ovan, orsaken visas som verktygstips.</translation>
     </message>
 </context>
 <context>
@@ -1894,15 +1894,15 @@ Se till att namnen på de nycklar som tillhör varandra är identiska på alla d
     </message>
     <message>
         <source>1 file could not be collected.</source>
-        <translation type="unfinished"/>
+        <translation>1 fil kunde inte samlas in.</translation>
     </message>
     <message>
         <source>%1 files could not be collected.</source>
-        <translation type="unfinished"/>
+        <translation>%1 filer kunde inte samlas in.</translation>
     </message>
     <message>
         <source>%1 (%2 not collected)</source>
-        <translation type="unfinished"/>
+        <translation>%1 (%2 inte insamlade)</translation>
     </message>
 </context>
 <context>
@@ -1917,7 +1917,7 @@ Se till att namnen på de nycklar som tillhör varandra är identiska på alla d
     </message>
     <message>
         <source>Allow master to choose the destination directory</source>
-        <translation type="unfinished"/>
+        <translation>Tillåt Veyon Master att välja målkatalog</translation>
     </message>
     <message>
         <source>Settings for collecting files</source>
@@ -2146,15 +2146,15 @@ Se till att namnen på de nycklar som tillhör varandra är identiska på alla d
     </message>
     <message>
         <source>Could not receive the file because the destination directory is invalid.</source>
-        <translation type="unfinished"/>
+        <translation>Kunde inte ta emot filen eftersom målkatalogen är ogiltig.</translation>
     </message>
     <message>
         <source>Could not receive the file because the destination directory could not be created.</source>
-        <translation type="unfinished"/>
+        <translation>Kunde inte ta emot filen eftersom målkatalogen inte kunde skapas.</translation>
     </message>
     <message>
         <source>Could not receive the file because its name is invalid.</source>
-        <translation type="unfinished"/>
+        <translation>Kunde inte ta emot filen eftersom dess namn är ogiltigt.</translation>
     </message>
     <message>
         <source>Could not receive file %1 as it already exists.</source>
@@ -3237,7 +3237,7 @@ Se till att namnen på de nycklar som tillhör varandra är identiska på alla d
     </message>
     <message>
         <source>Ctrl+Shift+S</source>
-        <translation type="unfinished"/>
+        <translation>Ctrl+Shift+S</translation>
     </message>
     <message>
         <source>L&amp;oad settings from file</source>
@@ -3317,7 +3317,7 @@ Se till att namnen på de nycklar som tillhör varandra är identiska på alla d
     </message>
     <message>
         <source>Apply configuration (%1)</source>
-        <translation type="unfinished"/>
+        <translation>Tillämpa konfiguration (%1)</translation>
     </message>
     <message>
         <source>Load settings from file</source>
@@ -3329,19 +3329,19 @@ Se till att namnen på de nycklar som tillhör varandra är identiska på alla d
     </message>
     <message>
         <source>Could not open the file %1 for reading: %2</source>
-        <translation type="unfinished"/>
+        <translation>Kunde inte öppna filen %1 för läsning: %2</translation>
     </message>
     <message>
         <source>The file %1 does not contain valid settings.</source>
-        <translation type="unfinished"/>
+        <translation>Filen %1 innehåller inga giltiga inställningar.</translation>
     </message>
     <message>
         <source>Could not open the file %1 for writing: %2</source>
-        <translation type="unfinished"/>
+        <translation>Kunde inte öppna filen %1 för skrivning: %2</translation>
     </message>
     <message>
         <source>Could not write the settings to the file %1.</source>
-        <translation type="unfinished"/>
+        <translation>Kunde inte skriva inställningarna till filen %1.</translation>
     </message>
     <message>
         <source>Do you really want to reset the local configuration and revert all settings to their defaults?</source>
@@ -3759,11 +3759,11 @@ Håll nedtryckt för att ladda arrangemanget från en fil eller spara aktuellt a
     </message>
     <message>
         <source>Identify users</source>
-        <translation type="unfinished"/>
+        <translation>Identifiera användare</translation>
     </message>
     <message>
         <source>Click this button to ask the users in guest sessions on the selected computers to enter their names again.</source>
-        <translation type="unfinished"/>
+        <translation>Klicka på den här knappen för att be användarna i gästsessioner på de valda datorerna att ange sina namn igen.</translation>
     </message>
     <message>
         <source>Identification request</source>
@@ -4965,7 +4965,7 @@ Exempel: [^-]*-(pc[0-9]*) [^-]*-(PC[0-9]*)</translation>
     <name>WebApiPlugin</name>
     <message>
         <source>Show help about command</source>
-        <translation type="unfinished"/>
+        <translation>Visa hjälp om kommandot</translation>
     </message>
     <message>
         <source>Run WebAPI server</source>
@@ -4973,7 +4973,7 @@ Exempel: [^-]*-(pc[0-9]*) [^-]*-(PC[0-9]*)</translation>
     </message>
     <message>
         <source>Runs the WebAPI server in the foreground with the configured settings until the program is terminated.</source>
-        <translation type="unfinished"/>
+        <translation>Kör WebAPI-servern i förgrunden med de konfigurerade inställningarna tills programmet avslutas.</translation>
     </message>
     <message>
         <source>Failed to start WebAPI server at port %1</source>

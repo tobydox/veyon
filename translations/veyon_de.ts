@@ -1737,47 +1737,47 @@ Achten Sie darauf, dass die Namen der zueinander gehörenden Schlüssel auf alle
     <name>FileCollectController</name>
     <message>
         <source>The collection was cancelled.</source>
-        <translation type="unfinished"/>
+        <translation>Das Einsammeln wurde abgebrochen.</translation>
     </message>
     <message>
         <source>The file transfer was interrupted.</source>
-        <translation type="unfinished"/>
+        <translation>Die Dateiübertragung wurde unterbrochen.</translation>
     </message>
     <message>
         <source>The announced file size is invalid.</source>
-        <translation type="unfinished"/>
+        <translation>Die angekündigte Dateigröße ist ungültig.</translation>
     </message>
     <message>
         <source>The file name is not supported on this computer.</source>
-        <translation type="unfinished"/>
+        <translation>Der Dateiname wird auf diesem Computer nicht unterstützt.</translation>
     </message>
     <message>
         <source>The output directory could not be created.</source>
-        <translation type="unfinished"/>
+        <translation>Das Ausgabeverzeichnis konnte nicht erstellt werden.</translation>
     </message>
     <message>
         <source>The output path is outside of the collection directory.</source>
-        <translation type="unfinished"/>
+        <translation>Der Ausgabepfad liegt außerhalb des Sammlungsverzeichnisses.</translation>
     </message>
     <message>
         <source>The output file could not be opened for writing. It may be a link or belong to another user.</source>
-        <translation type="unfinished"/>
+        <translation>Die Ausgabedatei konnte nicht zum Schreiben geöffnet werden. Möglicherweise handelt es sich um eine Verknüpfung oder sie gehört einem anderen Benutzer.</translation>
     </message>
     <message>
         <source>The file is larger than announced.</source>
-        <translation type="unfinished"/>
+        <translation>Die Datei ist größer als angekündigt.</translation>
     </message>
     <message>
         <source>The output file could not be written.</source>
-        <translation type="unfinished"/>
+        <translation>Die Ausgabedatei konnte nicht geschrieben werden.</translation>
     </message>
     <message>
         <source>The file was skipped on the computer because it is still open in an application.</source>
-        <translation type="unfinished"/>
+        <translation>Die Datei wurde auf dem Computer übersprungen, da sie noch in einem Programm geöffnet ist.</translation>
     </message>
     <message>
         <source>The file transfer was not started.</source>
-        <translation type="unfinished"/>
+        <translation>Die Dateiübertragung wurde nicht gestartet.</translation>
     </message>
 </context>
 <context>
@@ -1864,15 +1864,15 @@ Achten Sie darauf, dass die Namen der zueinander gehörenden Schlüssel auf alle
     </message>
     <message>
         <source>&lt;b&gt;Warning:&lt;/b&gt; The collection was cancelled. Files that were not collected are marked in the list above.</source>
-        <translation type="unfinished"/>
+        <translation>&lt;b&gt;Warnung:&lt;/b&gt; Das Einsammeln wurde abgebrochen. Nicht eingesammelte Dateien sind in der obigen Liste markiert.</translation>
     </message>
     <message>
         <source>&lt;b&gt;Warning:&lt;/b&gt; 1 file could not be collected. It is marked in the list above, the reason is shown as tooltip.</source>
-        <translation type="unfinished"/>
+        <translation>&lt;b&gt;Warnung:&lt;/b&gt; 1 Datei konnte nicht eingesammelt werden. Sie ist in der obigen Liste markiert, der Grund wird als Tooltip angezeigt.</translation>
     </message>
     <message>
         <source>&lt;b&gt;Warning:&lt;/b&gt; %1 files could not be collected. They are marked in the list above, the reason is shown as tooltip.</source>
-        <translation type="unfinished"/>
+        <translation>&lt;b&gt;Warnung:&lt;/b&gt; %1 Dateien konnten nicht eingesammelt werden. Sie sind in der obigen Liste markiert, der Grund wird jeweils als Tooltip angezeigt.</translation>
     </message>
 </context>
 <context>
@@ -1891,15 +1891,15 @@ Achten Sie darauf, dass die Namen der zueinander gehörenden Schlüssel auf alle
     </message>
     <message>
         <source>1 file could not be collected.</source>
-        <translation type="unfinished"/>
+        <translation>1 Datei konnte nicht eingesammelt werden.</translation>
     </message>
     <message>
         <source>%1 files could not be collected.</source>
-        <translation type="unfinished"/>
+        <translation>%1 Dateien konnten nicht eingesammelt werden.</translation>
     </message>
     <message>
         <source>%1 (%2 not collected)</source>
-        <translation type="unfinished"/>
+        <translation>%1 (%2 nicht eingesammelt)</translation>
     </message>
 </context>
 <context>
@@ -1914,7 +1914,7 @@ Achten Sie darauf, dass die Namen der zueinander gehörenden Schlüssel auf alle
     </message>
     <message>
         <source>Allow master to choose the destination directory</source>
-        <translation type="unfinished"/>
+        <translation>Auswahl des Zielverzeichnisses in Veyon Master erlauben</translation>
     </message>
     <message>
         <source>Settings for collecting files</source>
@@ -2143,15 +2143,15 @@ Achten Sie darauf, dass die Namen der zueinander gehörenden Schlüssel auf alle
     </message>
     <message>
         <source>Could not receive the file because the destination directory is invalid.</source>
-        <translation type="unfinished"/>
+        <translation>Die Datei konnte nicht empfangen werden, da das Zielverzeichnis ungültig ist.</translation>
     </message>
     <message>
         <source>Could not receive the file because the destination directory could not be created.</source>
-        <translation type="unfinished"/>
+        <translation>Die Datei konnte nicht empfangen werden, da das Zielverzeichnis nicht erstellt werden konnte.</translation>
     </message>
     <message>
         <source>Could not receive the file because its name is invalid.</source>
-        <translation type="unfinished"/>
+        <translation>Die Datei konnte nicht empfangen werden, da ihr Name ungültig ist.</translation>
     </message>
     <message>
         <source>Could not receive file %1 as it already exists.</source>
@@ -3234,7 +3234,7 @@ Achten Sie darauf, dass die Namen der zueinander gehörenden Schlüssel auf alle
     </message>
     <message>
         <source>Ctrl+Shift+S</source>
-        <translation type="unfinished"/>
+        <translation>Strg+Umschalt+S</translation>
     </message>
     <message>
         <source>L&amp;oad settings from file</source>
@@ -3314,7 +3314,7 @@ Achten Sie darauf, dass die Namen der zueinander gehörenden Schlüssel auf alle
     </message>
     <message>
         <source>Apply configuration (%1)</source>
-        <translation type="unfinished"/>
+        <translation>Konfiguration anwenden (%1)</translation>
     </message>
     <message>
         <source>Load settings from file</source>
@@ -3326,19 +3326,19 @@ Achten Sie darauf, dass die Namen der zueinander gehörenden Schlüssel auf alle
     </message>
     <message>
         <source>Could not open the file %1 for reading: %2</source>
-        <translation type="unfinished"/>
+        <translation>Die Datei %1 konnte nicht zum Lesen geöffnet werden: %2</translation>
     </message>
     <message>
         <source>The file %1 does not contain valid settings.</source>
-        <translation type="unfinished"/>
+        <translation>Die Datei %1 enthält keine gültigen Einstellungen.</translation>
     </message>
     <message>
         <source>Could not open the file %1 for writing: %2</source>
-        <translation type="unfinished"/>
+        <translation>Die Datei %1 konnte nicht zum Schreiben geöffnet werden: %2</translation>
     </message>
     <message>
         <source>Could not write the settings to the file %1.</source>
-        <translation type="unfinished"/>
+        <translation>Die Einstellungen konnten nicht in die Datei %1 geschrieben werden.</translation>
     </message>
     <message>
         <source>Do you really want to reset the local configuration and revert all settings to their defaults?</source>
@@ -3756,11 +3756,11 @@ Gedrückt halten, um die Anordnung aus einer Datei zu laden oder die aktuelle An
     </message>
     <message>
         <source>Identify users</source>
-        <translation type="unfinished"/>
+        <translation>Benutzer identifizieren</translation>
     </message>
     <message>
         <source>Click this button to ask the users in guest sessions on the selected computers to enter their names again.</source>
-        <translation type="unfinished"/>
+        <translation>Klicken Sie auf diesen Button, um die Benutzer in Gastsitzungen auf den gewählten Computern erneut zur Eingabe ihres Namens aufzufordern.</translation>
     </message>
     <message>
         <source>Identification request</source>
@@ -4962,7 +4962,7 @@ Beispiel: [^-]*-(PC[0-9]*)</translation>
     <name>WebApiPlugin</name>
     <message>
         <source>Show help about command</source>
-        <translation type="unfinished"/>
+        <translation>Hilfe über Befehl anzeigen</translation>
     </message>
     <message>
         <source>Run WebAPI server</source>
@@ -4970,7 +4970,7 @@ Beispiel: [^-]*-(PC[0-9]*)</translation>
     </message>
     <message>
         <source>Runs the WebAPI server in the foreground with the configured settings until the program is terminated.</source>
-        <translation type="unfinished"/>
+        <translation>Führt den WebAPI-Server mit den konfigurierten Einstellungen im Vordergrund aus, bis das Programm beendet wird.</translation>
     </message>
     <message>
         <source>Failed to start WebAPI server at port %1</source>
