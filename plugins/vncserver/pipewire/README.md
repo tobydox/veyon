@@ -19,8 +19,11 @@ CreateSession  →  SelectDevices  →  SelectSources  →  Start  →  OpenPipe
 ```
 
 All steps are asynchronous via the portal `Response` signal.
-If the stream ends (e.g., compositor restart) the session is automatically
-restarted after a short delay.
+If the stream ends (e.g., compositor restart) or the portal closes the session
+(`Session.Closed`, e.g. screen lock or the user stopping screen sharing), the
+session is automatically restarted after a short delay (2 s after the end of
+the stream, 5 s after a failure or a closed session), but not while the screen
+is locked, see [Remembering the approval](#remembering-the-approval-restore-token).
 
 ### Process layout: `veyon-capture-helper`
 
@@ -81,14 +84,80 @@ an administrator survive service restarts.
 xdg-desktop-portal derives the app ID of a host application from the process
 behind the calling D-Bus connection: from its systemd unit or scope
 (`app-io.veyon.veyon\x2dserver-<random>.scope`, see `LinuxServerProcess`) or,
-with xdg-desktop-portal ≥ 1.20, from a registration via
-`org.freedesktop.host.portal.Registry`. Well-known bus names are not used, so
+with xdg-desktop-portal ≥ 1.19.4, from a registration via
+`org.freedesktop.host.portal.Registry.Register()` (exported on
+`/org/freedesktop/portal/desktop`). Well-known bus names are not used, so
 `veyon-capture-helper` does not register one, and there is no D-Bus activation
 file (`veyon-server` must only be started by `veyon-service`).
+
+The portal accepts the registration only once per connection and only before
+any other portal call on it, since it derives the app ID with the first call.
+`PortalSession` therefore uses a session bus connection of its own and calls
+`Register("io.veyon.veyon-server", {})` on it first. The shared connection of
+the process is left to Qt: Qt ≥ 6.10 registers
+`QGuiApplication::desktopFileName()` (set to `io.veyon.veyon-server` before
+constructing `QGuiApplication`) on it by itself, and older Qt versions may call
+e.g. the Settings portal on it before. If the registration is refused because
+the connection is registered already, this is logged at debug level; portals
+without the registry keep using the systemd scope. Restore tokens are stored
+per app ID, so a changed app ID silently invalidates them.
 
 The **XDG `.desktop` file** `io.veyon.veyon-server.desktop` is installed to
 `/usr/share/applications/`. The portal reads `Name=Veyon Server` from it to
 display "Veyon Server" in the permission dialog.
+
+## Remembering the approval (restore token)
+
+The RemoteDesktop portal can remember the approval of the consent dialog: with
+`persist_mode` 2 the `Start` response contains a `restore_token`, and passing
+it to `SelectDevices` the next time starts the session without the dialog. On
+GNOME, which has no pre-authorization like KDE's `kde-authorized` table, this
+is the only supported way to avoid a dialog per user and login.
+
+* **Availability:** `persist_mode` and `restore_token` are sent only if the
+  `version` property of `org.freedesktop.portal.RemoteDesktop` is 2 or newer
+  (xdg-desktop-portal ≥ 1.17; with xdg-desktop-portal-gnome ≥ 45, i.e.
+  GNOME 45 and newer, e.g. Ubuntu 24.04). Otherwise (e.g. Ubuntu 22.04 /
+  GNOME 42) it is logged once at info level that approvals can't be
+  remembered, and the dialog appears on every start.
+* **Configuration:** *Remember the screen sharing approval across restarts*
+  (`PipeWireVnc/PersistRestoreToken`, advanced view) is enabled by default
+  since 4.12; a configuration with an explicit `false` keeps it disabled.
+  Disabled, the token is kept in memory only (restarts of the session within
+  one server run don't ask again) and a stored token file is removed.
+* **Storage:** `$XDG_STATE_HOME/veyon/portal-restore-token`
+  (`~/.local/state/veyon/portal-restore-token` by default) with mode 0600 in
+  the directory `veyon` with mode 0700, which is created that way or
+  restricted if it already exists and is owned by the user. A directory not
+  owned by the user, a token file that is a symbolic link, not a regular file
+  or not owned by the user is not used. The file is replaced atomically. A
+  token in the location used by builds with Qt < 6.7
+  (`~/.local/share/veyon/portal-restore-token`) is moved once and the old file
+  removed.
+* **Token lifecycle:** xdg-desktop-portal deletes its entry for a token when
+  `SelectDevices` receives it and stores it again only if `Start` succeeds.
+  The token returned by `Start` therefore always replaces the stored one, and
+  a failed attempt with a token (or a `Start` without a new token) drops it in
+  memory and on disk, so the dialog appears with the next start.
+* **Restore without a stream:** if a monitor stored with the approval is gone,
+  xdg-desktop-portal-gnome restores the session without any stream instead of
+  asking again. The token is then dropped, the session closed and started once
+  more without the token, so that the dialog appears. That retry carries no
+  token, so it can't repeat.
+* **Closed session and screen lock:** GNOME closes all screen sharing sessions
+  when the screen is locked (and refuses new ones until it is unlocked), and
+  the user can stop sharing via the indicator. The capture helper restarts the
+  session after 5 s with the stored token, i.e. without a dialog, and logs
+  that. As an attempt while locked would use up the token, the helper asks
+  `org.gnome.ScreenSaver` (or `org.freedesktop.ScreenSaver`) whether the
+  screen is locked before starting the session and checks again every 5 s
+  until it is unlocked; neither service is started for this.
+* **Residual risk:** any program running as the same user can read the token
+  and start a screen sharing session without a dialog. This is accepted: the
+  portal's own permission store (`~/.local/share/flatpak/db/remote-desktop`,
+  `org.freedesktop.impl.portal.PermissionStore`) is equally readable and
+  writable by such programs, so the token file adds no new capability for
+  them. Other users can't read it.
 
 ## Pre-authorization for KDE Plasma 6.3+
 
@@ -196,9 +265,11 @@ systemctl --user enable --now veyon-server
 ## Limitations and known issues
 
 * **GNOME**: GNOME's portal backend does not currently support the
-  `kde-authorized` pre-authorization table.  An interactive consent dialog
-  will appear on first use.  Persistent `restore_token` support (portal v2+)
-  reduces subsequent prompts to zero after the first manual approval.
+  `kde-authorized` pre-authorization table or any other pre-authorization.
+  An interactive consent dialog appears on first use per user; with
+  GNOME 45 and newer the approval is remembered afterwards (see
+  [Remembering the approval](#remembering-the-approval-restore-token)), with
+  GNOME 44 and older it is asked for on every start.
 
 * **Input forwarding**: The plugin requests both keyboard and pointer device
   types via `SelectDevices`.  Key presses and releases are forwarded using
