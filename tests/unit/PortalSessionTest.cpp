@@ -2,9 +2,9 @@
 // SPDX-FileCopyrightText: 2026 Ajrat Makhmutov <rauty@altlinux.org>
 // SPDX-License-Identifier: GPL-2.0-or-later
 
-// PortalSession input forwarding against a fake XDG Desktop Portal on a private session bus
-// (dbus-run-session). The fake portal runs in a child process since PortalSession waits for
-// OpenPipeWireRemote() synchronously.
+// PortalSession input forwarding and restore token handling against a fake XDG Desktop Portal on
+// a private session bus (dbus-run-session). The fake portal runs in a child process since
+// PortalSession waits for OpenPipeWireRemote() synchronously.
 
 #include <QDBusArgument>
 #include <QDBusConnection>
@@ -19,12 +19,14 @@
 #include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QTimer>
+#include <QUuid>
 #include <QtTest>
 
 #include "PortalSession.h"
 
 #include <fcntl.h>
 #include <linux/input.h>
+#include <sys/stat.h>
 #include <unistd.h>
 
 
@@ -35,6 +37,10 @@ const auto FakePortalObjectPath = QStringLiteral("/org/freedesktop/portal/deskto
 const auto SessionPathPrefix = QStringLiteral("/org/freedesktop/portal/desktop/session/test/");
 const auto TestInterface = QStringLiteral("io.veyon.Test.FakePortal");
 const auto MutterService = QStringLiteral("org.gnome.Mutter.RemoteDesktop");
+const auto ScreenSaverService = QStringLiteral("org.gnome.ScreenSaver");
+const auto ScreenSaverObjectPath = QStringLiteral("/org/gnome/ScreenSaver");
+const auto RegistryInterface = QStringLiteral("org.freedesktop.host.portal.Registry");
+const auto TestAppId = QStringLiteral("io.veyon.PortalSessionTest");
 
 // keysyms the fake portal handles specially
 constexpr quint32 SlowKeySym = 0xffe1; // Shift_L: forwarded late, like by a busy portal thread
@@ -110,6 +116,116 @@ public:
 	bool handleMessage(const QDBusMessage& message, const QDBusConnection& connection) override
 	{
 		const auto method = message.member();
+
+		if (message.interface() != TestInterface && m_firstCalls.contains(message.service()) == false)
+		{
+			m_firstCalls[message.service()] = method;
+		}
+
+		if (message.path() == ScreenSaverObjectPath && method == QLatin1String("GetActive"))
+		{
+			connection.send(message.createReply(QVariant(m_screenLocked)));
+			return true;
+		}
+
+		if (message.interface() == TestInterface && method == QLatin1String("Persistence"))
+		{
+			QStringList firstCalls;
+			for (auto it = m_firstCalls.constBegin(); it != m_firstCalls.constEnd(); ++it)
+			{
+				firstCalls.append(it.key() + QLatin1Char('=') + it.value());
+			}
+			connection.send(message.createReply({m_selectDevicesLog, m_dialogs, m_starts, m_registrations, firstCalls,
+												 m_lastToken, m_sessionCount}));
+			return true;
+		}
+
+		if (message.interface() == TestInterface && method == QLatin1String("SetVersion"))
+		{
+			m_version = message.arguments().value(0).toUInt();
+			connection.send(message.createReply());
+			return true;
+		}
+
+		if (message.interface() == TestInterface && method == QLatin1String("SetStreams"))
+		{
+			m_streamsMode = StreamsMode(message.arguments().value(0).toInt());
+			connection.send(message.createReply());
+			return true;
+		}
+
+		if (message.interface() == TestInterface && method == QLatin1String("SetRotateTokens"))
+		{
+			m_rotateTokens = message.arguments().value(0).toBool();
+			connection.send(message.createReply());
+			return true;
+		}
+
+		if (message.interface() == TestInterface && method == QLatin1String("AddToken"))
+		{
+			m_tokens.insert(message.arguments().value(0).toString());
+			connection.send(message.createReply());
+			return true;
+		}
+
+		if (message.interface() == TestInterface && method == QLatin1String("CloseSession"))
+		{
+			// what the portal does when GNOME locks the screen or the user stops sharing
+			const QString sessionPath = SessionPathPrefix + QString::number(m_sessionCount);
+			auto closedSignal = QDBusMessage::createSignal(sessionPath, QStringLiteral("org.freedesktop.portal.Session"),
+														   QStringLiteral("Closed"));
+			closedSignal.setArguments({QVariant::fromValue(QVariantMap{})});
+			const auto sent = connection.send(closedSignal);
+			connection.send(message.createReply(QVariant(sent)));
+			return true;
+		}
+
+		if (message.interface() == TestInterface && method == QLatin1String("SetScreenLocked"))
+		{
+			// -1: no screen saver service
+			const auto locked = message.arguments().value(0).toInt();
+			if (locked < 0)
+			{
+				QDBusConnection(connection).unregisterService(ScreenSaverService);
+			}
+			else
+			{
+				m_screenLocked = locked > 0;
+				QDBusConnection(connection).registerService(ScreenSaverService);
+			}
+			connection.send(message.createReply());
+			return true;
+		}
+
+		if (message.interface() == QLatin1String("org.freedesktop.DBus.Properties") && method == QLatin1String("Get"))
+		{
+			if (message.arguments().value(0).toString() == QLatin1String("org.freedesktop.portal.RemoteDesktop") &&
+				message.arguments().value(1).toString() == QLatin1String("version"))
+			{
+				connection.send(message.createReply({QVariant::fromValue(QDBusVariant(m_version))}));
+			}
+			else
+			{
+				connection.send(message.createErrorReply(QDBusError::InvalidArgs, QStringLiteral("no such property")));
+			}
+			return true;
+		}
+
+		if (message.interface() == RegistryInterface && method == QLatin1String("Register"))
+		{
+			// like xdg-desktop-portal: once per connection, and only before any other portal call
+			if (m_registeredSenders.contains(message.service()) ||
+				m_firstCalls.value(message.service()) != QLatin1String("Register"))
+			{
+				connection.send(message.createErrorReply(QStringLiteral("org.freedesktop.portal.Error.Failed"),
+														 QStringLiteral("Connection already associated with an application ID")));
+				return true;
+			}
+			m_registeredSenders.insert(message.service());
+			m_registrations.append(message.service() + QLatin1Char(':') + message.arguments().value(0).toString());
+			connection.send(message.createReply());
+			return true;
+		}
 
 		if (message.interface() == TestInterface && method == QLatin1String("State"))
 		{
@@ -325,13 +441,36 @@ private:
 			response = 2;
 		}
 
+		const auto sessionHandle = qvariant_cast<QDBusObjectPath>(message.arguments().value(0)).path();
+
 		QVariantMap results;
 		if (message.member() == QLatin1String("CreateSession"))
 		{
 			results[QStringLiteral("session_handle")] = QString(SessionPathPrefix + QString::number(++m_sessionCount));
 		}
+		else if (message.member() == QLatin1String("SelectDevices"))
+		{
+			handleSelectDevices(sessionHandle, options);
+		}
 		else if (message.member() == QLatin1String("Start"))
 		{
+			++m_starts;
+			const auto session = m_sessions.take(sessionHandle);
+			if (session.restored == false)
+			{
+				// the consent dialog
+				++m_dialogs;
+			}
+			// like xdg-desktop-portal: the token is stored again (or a new one) with a successful Start
+			if (response == 0 && session.persist)
+			{
+				m_lastToken = session.restored && m_rotateTokens == false ? session.token : makeToken();
+				m_tokens.insert(m_lastToken);
+				results[QStringLiteral("restore_token")] = m_lastToken;
+			}
+
+			const auto withStreams = m_streamsMode == StreamsMode::Always ||
+				(m_streamsMode == StreamsMode::NotOnRestore && session.restored == false);
 			Stream stream{StreamNodeId, {}};
 			stream.properties[QStringLiteral("position")] =
 				QVariant::fromValue(IntPair{m_streamPosition.x(), m_streamPosition.y()});
@@ -341,7 +480,8 @@ private:
 				stream.properties[QStringLiteral("size")] =
 					QVariant::fromValue(IntPair{m_streamSize.width(), m_streamSize.height()});
 			}
-			results[QStringLiteral("streams")] = QVariant::fromValue(QList<Stream>{stream});
+			results[QStringLiteral("streams")] =
+				QVariant::fromValue(withStreams ? QList<Stream>{stream} : QList<Stream>{});
 		}
 
 		connection.send(message.createReply({QVariant::fromValue(QDBusObjectPath(requestPath))}));
@@ -353,6 +493,66 @@ private:
 			connection.send(responseSignal);
 		});
 	}
+
+	enum class StreamsMode {
+		Always,
+		NotOnRestore,
+		Never
+	};
+
+	struct Session
+	{
+		bool persist = false;
+		bool restored = false;
+		QString token;
+	};
+
+	void handleSelectDevices(const QString& sessionHandle, const QVariantMap& options)
+	{
+		QStringList entry;
+		Session session;
+		if (options.contains(QStringLiteral("persist_mode")))
+		{
+			entry.append(QStringLiteral("persist_mode=%1").arg(options.value(QStringLiteral("persist_mode")).toUInt()));
+			session.persist = options.value(QStringLiteral("persist_mode")).toUInt() == 2;
+		}
+		if (options.contains(QStringLiteral("restore_token")))
+		{
+			const auto token = options.value(QStringLiteral("restore_token")).toString();
+			entry.append(QStringLiteral("restore_token=") + token);
+			// like xdg-desktop-portal: the entry is deleted when looked up
+			session.restored = m_tokens.remove(token);
+			session.token = token;
+		}
+		m_selectDevicesLog.append(entry.join(QLatin1Char(';')));
+		m_sessions[sessionHandle] = session;
+	}
+
+	QString makeToken()
+	{
+		// alternately like xdg-desktop-portal < 1.23 (UUID) and newer versions
+		++m_tokenCount;
+		if (m_tokenCount % 2 == 0)
+		{
+			return QStringLiteral("Tok_%1abcdefghijklmnop").arg(m_tokenCount);
+		}
+		return QUuid::createUuid().toString(QUuid::WithoutBraces);
+	}
+
+	uint m_version = 2;
+	StreamsMode m_streamsMode = StreamsMode::Always;
+	bool m_rotateTokens = false;
+	bool m_screenLocked = false;
+	int m_tokenCount = 0;
+	int m_dialogs = 0;
+	int m_starts = 0;
+	QString m_lastToken;
+	QSet<QString> m_tokens;
+	QHash<QString, Session> m_sessions;
+	QStringList m_selectDevicesLog;
+	QStringList m_registrations;
+	QSet<QString> m_registeredSenders;
+	QMap<QString, QString> m_firstCalls;
 
 	int m_sessionCount = 0;
 	bool m_denyNextStart = false;
@@ -810,7 +1010,384 @@ private Q_SLOTS:
 		QCOMPARE(session.state(), PortalSession::State::Idle);
 	}
 
+	// the app ID must be known before the portal derives one from the first call of the connection
+	void registersAppIdBeforeAnyOtherCall()
+	{
+		PortalSession session(false);
+		QVERIFY(startSession(session));
+		PortalSession secondSession(false);
+		QVERIFY(startSession(secondSession));
+
+		// once per connection, though both sessions use it
+		const auto registrations = persistenceState().value(3).toStringList();
+		QCOMPARE(registrations.size(), 1);
+		const auto sender = registrations.constFirst().section(QLatin1Char(':'), 0, -2);
+		QCOMPARE(registrations.constFirst().section(QLatin1Char(':'), -1), TestAppId);
+		QVERIFY(persistenceState().value(4).toStringList().contains(sender + QStringLiteral("=Register")));
+	}
+
+	// RemoteDesktop version 1 (xdg-desktop-portal < 1.17, e.g. Ubuntu 22.04) has no persistence
+	void noPersistModeBeforeVersion2()
+	{
+		removeTokenFiles();
+		setVersion(1);
+		writeTokenFile(PortalSession::restoreTokenFilePath(), QUuid::createUuid().toString(QUuid::WithoutBraces));
+
+		PortalSession session(true);
+		QVERIFY(session.isPersistenceSupported() == false);
+		QVERIFY(session.hasRestoreToken() == false);
+		QVERIFY(startSession(session));
+		QCOMPARE(lastSelectDevices(), QString{});
+
+		setVersion(2);
+		removeTokenFiles();
+	}
+
+	void restoreTokenRoundTrip()
+	{
+		removeTokenFiles();
+		const auto dialogs = dialogCount();
+
+		{
+			PortalSession session(true);
+			QVERIFY(session.isPersistenceSupported());
+			QVERIFY(session.hasRestoreToken() == false);
+			QVERIFY(startSession(session));
+			QCOMPARE(lastSelectDevices(), QStringLiteral("persist_mode=2"));
+			QCOMPARE(dialogCount(), dialogs + 1);
+		}
+
+		const auto token = lastToken();
+		QCOMPARE(readTokenFile(), token);
+
+		// the next run of the helper doesn't ask
+		PortalSession session(true);
+		QVERIFY(session.hasRestoreToken());
+		QVERIFY(startSession(session));
+		QCOMPARE(lastSelectDevices(), QStringLiteral("persist_mode=2;restore_token=") + token);
+		QCOMPARE(dialogCount(), dialogs + 1);
+		QCOMPARE(readTokenFile(), token);
+	}
+
+	// the portal may hand out a new token on every start, which replaces the old one
+	void restoreTokenIsReplaced()
+	{
+		removeTokenFiles();
+		{
+			PortalSession session(true);
+			QVERIFY(startSession(session));
+		}
+		const auto oldToken = readTokenFile();
+		QVERIFY(oldToken.isEmpty() == false);
+
+		setRotateTokens(true);
+		PortalSession session(true);
+		QVERIFY(startSession(session));
+		setRotateTokens(false);
+		QCOMPARE(lastSelectDevices(), QStringLiteral("persist_mode=2;restore_token=") + oldToken);
+
+		const auto newToken = lastToken();
+		QVERIFY(newToken != oldToken);
+		QCOMPARE(readTokenFile(), newToken);
+		// replaced by renaming, no temporary file is left
+		QCOMPARE(QDir(tokenDirectory()).entryList(QDir::AllEntries | QDir::Hidden | QDir::NoDotAndDotDot),
+				 QStringList{QStringLiteral("portal-restore-token")});
+		QCOMPARE(fileMode(PortalSession::restoreTokenFilePath()), 0600);
+	}
+
+	void tokenFileAndDirectoryModes()
+	{
+		removeTokenFiles();
+		QDir().rmdir(tokenDirectory());
+
+		{
+			PortalSession session(true);
+			QVERIFY(startSession(session));
+		}
+		QCOMPARE(fileMode(tokenDirectory()), 0700);
+		QCOMPARE(fileMode(PortalSession::restoreTokenFilePath()), 0600);
+
+		// e.g. created by an older version with the default umask
+		QVERIFY(::chmod(QFile::encodeName(tokenDirectory()).constData(), 0755) == 0);
+		QVERIFY(::chmod(QFile::encodeName(PortalSession::restoreTokenFilePath()).constData(), 0644) == 0);
+		PortalSession session(true);
+		QVERIFY(session.hasRestoreToken());
+		QCOMPARE(fileMode(tokenDirectory()), 0700);
+		QCOMPARE(fileMode(PortalSession::restoreTokenFilePath()), 0600);
+	}
+
+	void symbolicLinkIsRefused()
+	{
+		removeTokenFiles();
+		const auto token = QUuid::createUuid().toString(QUuid::WithoutBraces);
+		addToken(token);
+		const auto target = m_home.filePath(QStringLiteral("elsewhere"));
+		writeTokenFile(target, token);
+		QDir().mkpath(tokenDirectory());
+		QVERIFY(QFile::link(target, PortalSession::restoreTokenFilePath()));
+
+		QTest::ignoreMessage(QtWarningMsg, QRegularExpression(QStringLiteral("symbolic link")));
+		PortalSession session(true);
+		QVERIFY(session.hasRestoreToken() == false);
+		QVERIFY(startSession(session));
+		QCOMPARE(lastSelectDevices(), QStringLiteral("persist_mode=2"));
+
+		// the new token replaces the link, not the file it points to
+		QVERIFY(QFileInfo(PortalSession::restoreTokenFilePath()).isSymLink() == false);
+		QCOMPARE(readTokenFile(), lastToken());
+		QFile targetFile(target);
+		QVERIFY(targetFile.open(QFile::ReadOnly));
+		QCOMPARE(QString::fromUtf8(targetFile.readAll()), token);
+		targetFile.remove();
+	}
+
+	void foreignTokenFileIsRefused()
+	{
+		if (::getuid() != 0)
+		{
+			QSKIP("changing the owner of a file needs root");
+		}
+
+		removeTokenFiles();
+		writeTokenFile(PortalSession::restoreTokenFilePath(), QUuid::createUuid().toString(QUuid::WithoutBraces));
+		QVERIFY(::chown(QFile::encodeName(PortalSession::restoreTokenFilePath()).constData(), 65534, 65534) == 0);
+
+		QTest::ignoreMessage(QtWarningMsg, QRegularExpression(QStringLiteral("not a regular file owned by the user")));
+		PortalSession session(true);
+		QVERIFY(session.hasRestoreToken() == false);
+		removeTokenFiles();
+	}
+
+	void legacyTokenIsMigrated()
+	{
+		removeTokenFiles();
+		const auto token = QUuid::createUuid().toString(QUuid::WithoutBraces);
+		addToken(token);
+		const auto legacyFilePath = PortalSession::legacyRestoreTokenFilePath();
+		QVERIFY(legacyFilePath != PortalSession::restoreTokenFilePath());
+		writeTokenFile(legacyFilePath, token);
+
+		PortalSession session(true);
+		QVERIFY(session.hasRestoreToken());
+		QCOMPARE(readTokenFile(), token);
+		QCOMPARE(fileMode(PortalSession::restoreTokenFilePath()), 0600);
+		QVERIFY(QFileInfo::exists(legacyFilePath) == false);
+		QVERIFY(QFileInfo::exists(QFileInfo(legacyFilePath).path()) == false);
+
+		QVERIFY(startSession(session));
+		QCOMPARE(lastSelectDevices(), QStringLiteral("persist_mode=2;restore_token=") + token);
+	}
+
+	void disabledPersistenceRemovesTokenFiles()
+	{
+		writeTokenFile(PortalSession::restoreTokenFilePath(), QUuid::createUuid().toString(QUuid::WithoutBraces));
+		writeTokenFile(PortalSession::legacyRestoreTokenFilePath(), QUuid::createUuid().toString(QUuid::WithoutBraces));
+
+		PortalSession session(false);
+		QVERIFY(session.hasRestoreToken() == false);
+		QVERIFY(QFileInfo::exists(PortalSession::restoreTokenFilePath()) == false);
+		QVERIFY(QFileInfo::exists(PortalSession::legacyRestoreTokenFilePath()) == false);
+	}
+
+	// the portal deleted its entry when looking the token up, so it is of no use anymore
+	void failedStartDropsToken()
+	{
+		removeTokenFiles();
+		{
+			PortalSession session(true);
+			QVERIFY(startSession(session));
+		}
+		QVERIFY(readTokenFile().isEmpty() == false);
+
+		PortalSession session(true);
+		QSignalSpy failedSpy(&session, &PortalSession::failed);
+		denyNextStart();
+		session.start();
+		QTRY_COMPARE(failedSpy.size(), 1);
+		QVERIFY(lastSelectDevices().contains(QStringLiteral("restore_token=")));
+		QVERIFY(session.hasRestoreToken() == false);
+		QVERIFY(QFileInfo::exists(PortalSession::restoreTokenFilePath()) == false);
+
+		// asks again
+		const auto dialogs = dialogCount();
+		QVERIFY(startSession(session));
+		QCOMPARE(lastSelectDevices(), QStringLiteral("persist_mode=2"));
+		QCOMPARE(dialogCount(), dialogs + 1);
+	}
+
+	// xdg-desktop-portal-gnome restores a session without its monitor instead of asking again
+	void restoreWithoutStreamRetriesOnceWithoutToken()
+	{
+		removeTokenFiles();
+		{
+			PortalSession session(true);
+			QVERIFY(startSession(session));
+		}
+		const auto oldToken = readTokenFile();
+		const auto starts = startCount();
+		const auto dialogs = dialogCount();
+		const auto selectDevicesCount = selectDevicesLog().size();
+
+		setStreams(1); // none when restored
+		PortalSession session(true);
+		QSignalSpy failedSpy(&session, &PortalSession::failed);
+		QTest::ignoreMessage(QtWarningMsg, QRegularExpression(QStringLiteral("without a usable stream")));
+		QVERIFY(startSession(session));
+		setStreams(0);
+
+		QCOMPARE(selectDevicesLog().mid(selectDevicesCount),
+				 (QStringList{QStringLiteral("persist_mode=2;restore_token=") + oldToken, QStringLiteral("persist_mode=2")}));
+		QCOMPARE(startCount(), starts + 2);
+		QCOMPARE(dialogCount(), dialogs + 1);
+		QCOMPARE(failedSpy.size(), 0);
+		QCOMPARE(session.pipeWireNodeId(), StreamNodeId);
+		QCOMPARE(readTokenFile(), lastToken());
+		QVERIFY(lastToken() != oldToken);
+	}
+
+	// no endless loop if the portal never provides a stream
+	void sessionWithoutStreamIsRetriedOnlyOnce()
+	{
+		removeTokenFiles();
+		{
+			PortalSession session(true);
+			QVERIFY(startSession(session));
+		}
+		const auto starts = startCount();
+
+		setStreams(2); // never
+		PortalSession session(true);
+		QSignalSpy failedSpy(&session, &PortalSession::failed);
+		QTest::ignoreMessage(QtWarningMsg, QRegularExpression(QStringLiteral("without a usable stream")));
+		QTest::ignoreMessage(QtCriticalMsg, QRegularExpression(QStringLiteral("without a usable stream")));
+		session.start();
+		QTRY_COMPARE(failedSpy.size(), 1);
+		QTest::qWait(200);
+		setStreams(0);
+
+		QCOMPARE(startCount(), starts + 2);
+		QCOMPARE(failedSpy.size(), 1);
+		QCOMPARE(session.state(), PortalSession::State::Failed);
+		syncSessionNumber();
+	}
+
+	// GNOME closes the session on screen lock or when the user stops sharing
+	void closedSessionIsRestoredWithToken()
+	{
+		removeTokenFiles();
+		PortalSession session(true);
+		QSignalSpy closedSpy(&session, &PortalSession::closedByPortal);
+		QSignalSpy failedSpy(&session, &PortalSession::failed);
+		QVERIFY(startSession(session));
+		const auto token = lastToken();
+		const QString closedSessionPath = SessionPathPrefix + QString::number(currentSessionNumber());
+		const auto dialogs = dialogCount();
+
+		closePortalSession();
+		QTRY_COMPARE(closedSpy.size(), 1);
+		QCOMPARE(failedSpy.size(), 0);
+		QCOMPARE(session.state(), PortalSession::State::Failed);
+		QVERIFY(session.hasRestoreToken());
+		// nothing to close anymore
+		QVERIFY(closedSessions().contains(closedSessionPath) == false);
+
+		// how PipeWireCaptureServer restarts it
+		QVERIFY(startSession(session));
+		QCOMPARE(lastSelectDevices(), QStringLiteral("persist_mode=2;restore_token=") + token);
+		QCOMPARE(dialogCount(), dialogs);
+		QCOMPARE(closedSpy.size(), 1);
+
+		// a session closed by PortalSession itself is not reported
+		session.close();
+		QTest::qWait(100);
+		QCOMPARE(closedSpy.size(), 1);
+	}
+
+	void detectsLockedScreen()
+	{
+		PortalSession session(false);
+		QVERIFY(session.isScreenLocked() == false);
+
+		setScreenLocked(1);
+		QVERIFY(session.isScreenLocked());
+		setScreenLocked(0);
+		QVERIFY(session.isScreenLocked() == false);
+		setScreenLocked(-1);
+		QVERIFY(session.isScreenLocked() == false);
+	}
+
 private:
+	static QVariantList persistenceState()
+	{
+		const auto request = QDBusMessage::createMethodCall(FakePortalService, FakePortalObjectPath, TestInterface,
+															QStringLiteral("Persistence"));
+		return QDBusConnection::sessionBus().call(request).arguments();
+	}
+
+	static void callFakePortal(const QString& method, const QVariantList& arguments = {})
+	{
+		auto request = QDBusMessage::createMethodCall(FakePortalService, FakePortalObjectPath, TestInterface, method);
+		request.setArguments(arguments);
+		QDBusConnection::sessionBus().call(request);
+	}
+
+	static void setVersion(uint version) { callFakePortal(QStringLiteral("SetVersion"), {version}); }
+	static void setStreams(int mode) { callFakePortal(QStringLiteral("SetStreams"), {mode}); }
+	static void setRotateTokens(bool rotate) { callFakePortal(QStringLiteral("SetRotateTokens"), {rotate}); }
+	static void addToken(const QString& token) { callFakePortal(QStringLiteral("AddToken"), {token}); }
+	static void closePortalSession()
+	{
+		const auto reply = QDBusConnection::sessionBus().call(QDBusMessage::createMethodCall(
+			FakePortalService, FakePortalObjectPath, TestInterface, QStringLiteral("CloseSession")));
+		QVERIFY(reply.arguments().value(0).toBool());
+	}
+	static void setScreenLocked(int locked) { callFakePortal(QStringLiteral("SetScreenLocked"), {locked}); }
+	static void denyNextStart() { callFakePortal(QStringLiteral("DenyNextStart")); }
+
+	static QStringList selectDevicesLog() { return persistenceState().value(0).toStringList(); }
+	static QString lastSelectDevices() { return selectDevicesLog().value(selectDevicesLog().size() - 1); }
+	static int dialogCount() { return persistenceState().value(1).toInt(); }
+	static int startCount() { return persistenceState().value(2).toInt(); }
+	static QString lastToken() { return persistenceState().value(5).toString(); }
+
+	void syncSessionNumber() { m_sessionNumber = persistenceState().value(6).toInt(); }
+
+	static QString tokenDirectory() { return QFileInfo(PortalSession::restoreTokenFilePath()).path(); }
+
+	static void removeTokenFiles()
+	{
+		QFile::remove(PortalSession::restoreTokenFilePath());
+		QFile::remove(PortalSession::legacyRestoreTokenFilePath());
+	}
+
+	static void writeTokenFile(const QString& filePath, const QString& token)
+	{
+		QDir().mkpath(QFileInfo(filePath).path());
+		QFile file(filePath);
+		QVERIFY(file.open(QFile::WriteOnly | QFile::Truncate));
+		file.write(token.toUtf8());
+	}
+
+	static QString readTokenFile()
+	{
+		QFile file(PortalSession::restoreTokenFilePath());
+		if (file.open(QFile::ReadOnly) == false)
+		{
+			return {};
+		}
+		return QString::fromUtf8(file.readAll());
+	}
+
+	static int fileMode(const QString& path)
+	{
+		struct stat status{};
+		if (::lstat(QFile::encodeName(path).constData(), &status) != 0)
+		{
+			return -1;
+		}
+		return int(status.st_mode & 07777);
+	}
+
 	static void setMutter(bool mutter)
 	{
 		auto request = QDBusMessage::createMethodCall(FakePortalService, FakePortalObjectPath, TestInterface,
@@ -878,7 +1455,8 @@ private:
 		}
 		// PipeWireFramebuffer takes ownership of the descriptor
 		::close(session.pipewireFd());
-		++m_sessionNumber;
+		// also counts the sessions of a retry
+		m_sessionNumber = persistenceState().value(6).toInt();
 		return true;
 	}
 
@@ -920,7 +1498,7 @@ private:
 int main(int argc, char** argv)
 {
 	QGuiApplication application(argc, argv);
-	QGuiApplication::setDesktopFileName(QStringLiteral("io.veyon.PortalSessionTest"));
+	QGuiApplication::setDesktopFileName(TestAppId);
 
 	if (application.arguments().contains(QStringLiteral("--fake-portal")))
 	{
@@ -932,7 +1510,8 @@ int main(int argc, char** argv)
 		auto connection = QDBusConnection::sessionBus();
 		if (connection.registerService(FakePortalService) == false ||
 			connection.registerVirtualObject(QStringLiteral("/org/freedesktop/portal"), &portal,
-											 QDBusConnection::SubPath) == false)
+											 QDBusConnection::SubPath) == false ||
+			connection.registerVirtualObject(ScreenSaverObjectPath, &portal) == false)
 		{
 			return 1;
 		}
