@@ -222,8 +222,15 @@ public:
 
 		if (message.interface() == QLatin1String("org.freedesktop.DBus.Properties") && method == QLatin1String("Get"))
 		{
-			if (message.arguments().value(0).toString() == QLatin1String("org.freedesktop.portal.RemoteDesktop") &&
-				message.arguments().value(1).toString() == QLatin1String("version"))
+			if (m_failVersionReads > 0)
+			{
+				// as if the portal were still starting
+				--m_failVersionReads;
+				m_firstCalls.remove(message.service());
+				connection.send(message.createErrorReply(QDBusError::NoReply, QStringLiteral("no reply")));
+			}
+			else if (message.arguments().value(0).toString() == QLatin1String("org.freedesktop.portal.RemoteDesktop") &&
+					 message.arguments().value(1).toString() == QLatin1String("version"))
 			{
 				connection.send(message.createReply({QVariant::fromValue(QDBusVariant(m_version))}));
 			}
@@ -234,8 +241,41 @@ public:
 			return true;
 		}
 
+		if (message.interface() == TestInterface && method == QLatin1String("Restart"))
+		{
+			// a new portal instance: same name, no registrations, no app infos
+			m_registeredSenders.clear();
+			m_firstCalls.clear();
+			QDBusConnection(connection).unregisterService(FakePortalService);
+			QDBusConnection(connection).registerService(FakePortalService);
+			connection.send(message.createReply());
+			return true;
+		}
+
+		if (message.interface() == TestInterface && method == QLatin1String("FailVersionReads"))
+		{
+			m_failVersionReads = message.arguments().value(0).toInt();
+			connection.send(message.createReply());
+			return true;
+		}
+
+		if (message.interface() == TestInterface && method == QLatin1String("FailNextRegister"))
+		{
+			m_failNextRegister = true;
+			connection.send(message.createReply());
+			return true;
+		}
+
 		if (message.interface() == RegistryInterface && method == QLatin1String("Register"))
 		{
+			if (m_failNextRegister)
+			{
+				// as if the portal weren't up yet; nothing is stored for the connection then
+				m_failNextRegister = false;
+				m_firstCalls.remove(message.service());
+				connection.send(message.createErrorReply(QDBusError::NoReply, QStringLiteral("no reply")));
+				return true;
+			}
 			// like xdg-desktop-portal: once per connection, and only before any other portal call
 			if (m_registeredSenders.contains(message.service()) ||
 				m_firstCalls.value(message.service()) != QLatin1String("Register"))
@@ -565,6 +605,8 @@ private:
 	uint m_version = 2;
 	StreamsMode m_streamsMode = StreamsMode::Always;
 	bool m_rotateTokens = false;
+	bool m_failNextRegister = false;
+	int m_failVersionReads = 0;
 	bool m_screenLocked = false;
 	int m_tokenCount = 0;
 	int m_dialogs = 0;
@@ -1047,6 +1089,81 @@ private Q_SLOTS:
 		const auto sender = registrations.constFirst().section(QLatin1Char(':'), 0, -2);
 		QCOMPARE(registrations.constFirst().section(QLatin1Char(':'), -1), TestAppId);
 		QVERIFY(persistenceState().value(4).toStringList().contains(sender + QStringLiteral("=Register")));
+	}
+
+	// a restarted portal knows no registration, and a failed attempt is repeated
+	void registersAgainAfterPortalRestart()
+	{
+		PortalSession session(false);
+		QVERIFY(startSession(session));
+		const auto registrations = persistenceState().value(3).toStringList().size();
+
+		session.close();
+		callFakePortal(QStringLiteral("Restart"));
+		callFakePortal(QStringLiteral("FailNextRegister"));
+		QTest::qWait(100);
+
+		// the portal doesn't answer the first attempt, so the start waits and tries again
+		QSignalSpy failedSpy(&session, &PortalSession::failed);
+		const auto createdSessions = persistenceState().value(6).toInt();
+		QTest::ignoreMessage(QtWarningMsg, QRegularExpression(QStringLiteral("not reachable for registering")));
+		QTest::ignoreMessage(QtWarningMsg, QRegularExpression(QStringLiteral("not ready")));
+		session.start();
+		QTRY_COMPARE(failedSpy.size(), 1);
+		QCOMPARE(persistenceState().value(6).toInt(), createdSessions);
+		QCOMPARE(persistenceState().value(3).toStringList().size(), registrations);
+		QVERIFY(startSession(session));
+		const auto newRegistrations = persistenceState().value(3).toStringList();
+		QCOMPARE(newRegistrations.size(), registrations + 1);
+		const auto sender = newRegistrations.constLast().section(QLatin1Char(':'), 0, -2);
+		QVERIFY(persistenceState().value(4).toStringList().contains(sender + QStringLiteral("=Register")));
+	}
+
+	// a portal still starting at login must not make the session go without the stored token
+	void unknownVersionKeepsTokenAndRetries()
+	{
+		removeTokenFiles();
+		{
+			PortalSession session(true);
+			QVERIFY(startSession(session));
+		}
+		const auto token = readTokenFile();
+		const auto selectDevicesCount = selectDevicesLog().size();
+
+		// the constructor's read and the one of the first start
+		callFakePortal(QStringLiteral("FailVersionReads"), {2});
+		QTest::ignoreMessage(QtWarningMsg, QRegularExpression(QStringLiteral("could not read the version")));
+		PortalSession session(true);
+		QVERIFY(session.hasRestoreToken() == false);
+
+		QSignalSpy failedSpy(&session, &PortalSession::failed);
+		QTest::ignoreMessage(QtWarningMsg, QRegularExpression(QStringLiteral("could not read the version")));
+		QTest::ignoreMessage(QtWarningMsg, QRegularExpression(QStringLiteral("not ready")));
+		session.start();
+		QTRY_COMPARE(failedSpy.size(), 1);
+		QCOMPARE(selectDevicesLog().size(), selectDevicesCount);
+		QCOMPARE(readTokenFile(), token);
+
+		// how PipeWireCaptureServer retries
+		QVERIFY(startSession(session));
+		QCOMPARE(lastSelectDevices(), QStringLiteral("persist_mode=2;restore_token=") + token);
+	}
+
+	// but it doesn't wait forever
+	void unreadableVersionStartsAfterRetries()
+	{
+		callFakePortal(QStringLiteral("FailVersionReads"), {100});
+		PortalSession session(true);
+		QSignalSpy failedSpy(&session, &PortalSession::failed);
+		for (int i = 1; i < 3; ++i)
+		{
+			session.start();
+			QTRY_COMPARE(failedSpy.size(), i);
+		}
+		QVERIFY(startSession(session));
+		callFakePortal(QStringLiteral("FailVersionReads"), {0});
+		QCOMPARE(lastSelectDevices(), QString{});
+		QCOMPARE(failedSpy.size(), 2);
 	}
 
 	// RemoteDesktop version 1 (xdg-desktop-portal < 1.17, e.g. Ubuntu 22.04) has no persistence

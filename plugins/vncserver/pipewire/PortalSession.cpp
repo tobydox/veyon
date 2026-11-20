@@ -6,6 +6,7 @@
 #include <QDBusConnectionInterface>
 #include <QDBusMessage>
 #include <QDBusReply>
+#include <QDBusServiceWatcher>
 #include <QDBusObjectPath>
 #include <QDBusPendingCallWatcher>
 #include <QDBusPendingReply>
@@ -172,14 +173,18 @@ QDBusConnection PortalSession::portalConnection()
 
 
 
-void PortalSession::registerHostAppId(const QString& appId)
+// all PortalSession instances use the same connection, see portalConnection()
+PortalSession::HostAppIdRegistration PortalSession::s_hostAppIdRegistration = HostAppIdRegistration::Pending;
+
+
+
+bool PortalSession::registerHostAppId()
 {
-	// the portal accepts only one registration per connection, and all PortalSession instances use
-	// the same one
-	static bool registered = false;
-	if (registered || appId.isEmpty())
+	// the portal accepts only one registration per connection and portal instance
+	const auto appId = QGuiApplication::desktopFileName();
+	if (s_hostAppIdRegistration != HostAppIdRegistration::Pending || appId.isEmpty())
 	{
-		return;
+		return true;
 	}
 
 	// exported on the same object as all portal interfaces
@@ -192,8 +197,20 @@ void PortalSession::registerHostAppId(const QString& appId)
 	if (reply.type() != QDBusMessage::ErrorMessage)
 	{
 		vDebug() << "registered app ID" << appId << "with xdg-desktop-portal";
-		registered = true;
-		return;
+		s_hostAppIdRegistration = HostAppIdRegistration::Registered;
+		return true;
+	}
+
+	// the portal is not (yet) reachable: no other call may come first, so the session must wait
+	if (reply.errorName() == QLatin1String("org.freedesktop.DBus.Error.NoReply") ||
+		reply.errorName() == QLatin1String("org.freedesktop.DBus.Error.Timeout") ||
+		reply.errorName() == QLatin1String("org.freedesktop.DBus.Error.ServiceUnknown") ||
+		reply.errorName() == QLatin1String("org.freedesktop.DBus.Error.NameHasNoOwner") ||
+		reply.errorName() == QLatin1String("org.freedesktop.DBus.Error.Disconnected"))
+	{
+		vWarning() << "xdg-desktop-portal not reachable for registering app ID" << appId << ":"
+				   << reply.errorMessage();
+		return false;
 	}
 
 	if (reply.errorName() == QLatin1String("org.freedesktop.DBus.Error.UnknownMethod") ||
@@ -201,21 +218,37 @@ void PortalSession::registerHostAppId(const QString& appId)
 		reply.errorName() == QLatin1String("org.freedesktop.DBus.Error.UnknownInterface"))
 	{
 		vDebug() << "xdg-desktop-portal < 1.19.4 without host app registry, app ID derived from the systemd scope";
+		s_hostAppIdRegistration = HostAppIdRegistration::Unavailable;
 	}
 	else if (reply.errorName() == QLatin1String("org.freedesktop.portal.Error.Failed") &&
 			 reply.errorMessage().contains(QLatin1String("already associated")))
 	{
-		// e.g. by Qt >= 6.10, which registers QGuiApplication::desktopFileName() when constructing
-		// QGuiApplication, if this were the shared connection
-		vDebug() << "app ID already registered with xdg-desktop-portal on this connection";
-		registered = true;
+		// nothing but PortalSession uses this connection, so a portal call came first and the portal
+		// derived the app ID itself; restore tokens may be stored for another app ID then
+		vWarning() << "xdg-desktop-portal derived the app ID of this connection before it could be registered as"
+				   << appId;
+		s_hostAppIdRegistration = HostAppIdRegistration::Registered;
 	}
 	else
 	{
-		// e.g. a sandboxed process; the portal derives the app ID itself then
+		// e.g. no loadable desktop file or a sandboxed process: the portal derives the app ID itself
 		vWarning() << "could not register app ID" << appId << "with xdg-desktop-portal:" << reply.errorName()
 				   << reply.errorMessage();
+		s_hostAppIdRegistration = HostAppIdRegistration::Unavailable;
 	}
+
+	return true;
+}
+
+
+
+void PortalSession::onPortalOwnerChanged()
+{
+	// a new portal instance (e.g. restarted after an update) knows neither the registration of this
+	// connection nor has to be the same version
+	vDebug() << "xdg-desktop-portal restarted";
+	s_hostAppIdRegistration = HostAppIdRegistration::Pending;
+	m_portalVersion = 0;
 }
 
 
@@ -230,8 +263,6 @@ PortalSession::PortalSession(bool persistRestoreToken, QObject* parent) :
 		fail();
 	});
 
-	const auto appId = QGuiApplication::desktopFileName();
-
 	// xdg-desktop-portal derives the app ID from the process behind the unique name of the
 	// calling connection: from its systemd unit/scope (sd_pid_get_user_unit(), "app-<id>-*.scope")
 	// or, with portal >= 1.19.4, from org.freedesktop.host.portal.Registry.Register() on that
@@ -240,7 +271,11 @@ PortalSession::PortalSession(bool persistRestoreToken, QObject* parent) :
 	// before any other portal call on this connection; otherwise the app ID is empty, restore
 	// tokens are stored for the empty app ID and e.g. KDE's kde-authorized pre-authorization doesn't
 	// apply. Older portals don't provide the registry and keep using the scope.
-	registerHostAppId(appId);
+	registerHostAppId();
+	m_portalWatcher = new QDBusServiceWatcher(PortalService, m_sessionBus, QDBusServiceWatcher::WatchForOwnerChange, this);
+	connect(m_portalWatcher, &QDBusServiceWatcher::serviceOwnerChanged, this, &PortalSession::onPortalOwnerChanged);
+
+	const auto appId = QGuiApplication::desktopFileName();
 
 	// Apply KDE pre-authorization so the consent dialog can be suppressed
 	// in unattended/kiosk scenarios. These calls are best-effort and may
@@ -282,8 +317,27 @@ void PortalSession::start()
 	// a failed session may still be open at the portal
 	close();
 	m_restoringSession = false;
-	// the portal may not have been reachable before
-	detectPersistenceSupport();
+
+	// the registration comes first on the connection, also with a restarted portal or after an
+	// attempt the portal didn't answer; without the version, SelectDevices would go without the
+	// stored token and ask for an approval that can't be remembered, e.g. while the portal is still
+	// starting at login, so wait for both, but not forever
+	const auto portalReady = registerHostAppId() && detectPersistenceSupport();
+	if (portalReady)
+	{
+		m_portalNotReadyAttempts = 0;
+	}
+	else if (++m_portalNotReadyAttempts < MaximumPortalNotReadyAttempts)
+	{
+		vWarning() << "xdg-desktop-portal not ready - trying again later";
+		fail();
+		return;
+	}
+	else
+	{
+		vWarning() << "xdg-desktop-portal still not ready - starting the session anyway";
+	}
+
 	m_inputDispatcher.reset();
 	m_pipewireFd = -1;
 	m_pipeWireNodeId = 0;
@@ -328,11 +382,11 @@ void PortalSession::close()
 
 
 
-void PortalSession::detectPersistenceSupport()
+bool PortalSession::detectPersistenceSupport()
 {
 	if (m_portalVersion > 0)
 	{
-		return;
+		return true;
 	}
 
 	auto call = QDBusMessage::createMethodCall(PortalService, PortalObjectPath,
@@ -343,7 +397,7 @@ void PortalSession::detectPersistenceSupport()
 	if (reply.isValid() == false || reply.value().toUInt() == 0)
 	{
 		vWarning() << "could not read the version of the RemoteDesktop portal:" << reply.error().message();
-		return;
+		return false;
 	}
 
 	m_portalVersion = reply.value().toUInt();
@@ -354,7 +408,7 @@ void PortalSession::detectPersistenceSupport()
 		vInfo() << "the RemoteDesktop portal (version" << m_portalVersion << ") can't remember screen sharing approvals"
 				<< "on this system (needs xdg-desktop-portal >= 1.17, e.g. not on Ubuntu 22.04 / GNOME 42),"
 				<< "so the approval is asked for on every start";
-		return;
+		return true;
 	}
 
 	// persist_mode 2 only pays off across server runs if the token outlives this process
@@ -362,6 +416,8 @@ void PortalSession::detectPersistenceSupport()
 	{
 		loadRestoreToken();
 	}
+
+	return true;
 }
 
 

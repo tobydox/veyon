@@ -20,6 +20,8 @@
 #include "PortalInputDispatcher.h"
 #include "PortalPointerMapping.h"
 
+class QDBusServiceWatcher;
+
 /**
  * @brief Manages an XDG Desktop Portal RemoteDesktop session.
  *
@@ -177,18 +179,30 @@ Q_SIGNALS:
 private Q_SLOTS:
 	void onPortalResponse(uint response, const QVariantMap& results);
 	void onSessionClosed(const QVariantMap& details);
+	void onPortalOwnerChanged();
 
 private:
 	static constexpr int RegistryCallTimeout = 5000;
 	static constexpr int PropertyCallTimeout = 5000;
 	static constexpr int ScreenSaverCallTimeout = 1000;
+	// starts failed since the portal couldn't be registered with or asked for its version, before
+	// starting without remembering the approval
+	static constexpr int MaximumPortalNotReadyAttempts = 3;
 
 	static QDBusConnection portalConnection();
 	// portal >= 1.19.4: app ID of this connection (org.freedesktop.host.portal.Registry), once per
 	// connection and before any other portal call
-	void registerHostAppId(const QString& appId);
-	// reads the version of the RemoteDesktop interface unless known already
-	void detectPersistenceSupport();
+	// false if the portal can't be reached, then nothing else may be called on the connection yet
+	bool registerHostAppId();
+
+	enum class HostAppIdRegistration {
+		Pending,
+		Registered,
+		Unavailable
+	};
+	static HostAppIdRegistration s_hostAppIdRegistration;
+	// reads the version of the RemoteDesktop interface unless known already; false if unknown
+	bool detectPersistenceSupport();
 	void createSession();
 	void selectDevices();
 	void selectSources();
@@ -244,6 +258,7 @@ private:
 	QString makeRequestPath(const QString& token) const;
 
 	QDBusConnection m_sessionBus;
+	QDBusServiceWatcher* m_portalWatcher{nullptr};
 	OrgFreedesktopPortalRemoteDesktopInterface* m_remoteDesktop{nullptr};
 	OrgFreedesktopPortalScreenCastInterface* m_screenCast{nullptr};
 	OrgFreedesktopPortalRequestInterface* m_requestInterface{nullptr};
@@ -256,6 +271,7 @@ private:
 	uint m_portalVersion{0};
 	// the restore token has been sent with the current attempt
 	bool m_restoringSession{false};
+	int m_portalNotReadyAttempts{0};
 	State m_state{State::Idle};
 	int m_pipewireFd{-1};
 	quint32 m_pipeWireNodeId{0};
