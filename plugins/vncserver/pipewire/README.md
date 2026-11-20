@@ -98,9 +98,14 @@ the process is left to Qt: Qt ≥ 6.10 registers
 `QGuiApplication::desktopFileName()` (set to `io.veyon.veyon-server` before
 constructing `QGuiApplication`) on it by itself, and older Qt versions may call
 e.g. the Settings portal on it before. If the registration is refused because
-the connection is registered already, this is logged at debug level; portals
-without the registry keep using the systemd scope. Restore tokens are stored
-per app ID, so a changed app ID silently invalidates them.
+the connection is registered already, a warning is logged, since only a portal
+call before the registration can cause that on this connection; portals
+without the registry keep using the systemd scope. When the portal restarts
+(e.g. after an update), the registration is repeated before the next session.
+If the portal doesn't answer, no session is started (another call would make
+the portal derive the app ID itself); the start is retried after 5 s.
+Restore tokens are stored per app ID, so a changed app ID silently
+invalidates them.
 
 The **XDG `.desktop` file** `io.veyon.veyon-server.desktop` is installed to
 `/usr/share/applications/`. The portal reads `Name=Veyon Server` from it to
@@ -119,7 +124,11 @@ is the only supported way to avoid a dialog per user and login.
   (xdg-desktop-portal ≥ 1.17; with xdg-desktop-portal-gnome ≥ 45, i.e.
   GNOME 45 and newer, e.g. Ubuntu 24.04). Otherwise (e.g. Ubuntu 22.04 /
   GNOME 42) it is logged once at info level that approvals can't be
-  remembered, and the dialog appears on every start.
+  remembered, and the dialog appears on every start. If the version can't
+  be read (e.g. the portal is still starting at login), the start fails
+  without touching the token and is retried after 5 s, so that the stored
+  approval isn't bypassed; after three attempts the session is started
+  without persistence.
 * **Configuration:** *Remember the screen sharing approval across restarts*
   (`PipeWireVnc/PersistRestoreToken`, advanced view) is enabled by default
   since 4.12; a configuration with an explicit `false` keeps it disabled.
@@ -134,6 +143,13 @@ is the only supported way to avoid a dialog per user and login.
   token in the location used by builds with Qt < 6.7
   (`~/.local/share/veyon/portal-restore-token`) is moved once and the old file
   removed.
+* **Shared home directories:** the token file is per home directory, the
+  approval it names per computer (the portal's permission store and the
+  monitor stored with it). With one account whose home (e.g. on NFS) is used
+  on several computers, a login on another computer finds a token for a
+  monitor that isn't there, takes the restore-without-stream path below and
+  asks again, and the computers overwrite each other's token. That is no worse
+  than without persistence, but persistence doesn't help such setups.
 * **Token lifecycle:** xdg-desktop-portal deletes its entry for a token when
   `SelectDevices` receives it and stores it again only if `Start` succeeds.
   The token returned by `Start` therefore always replaces the stored one, and
