@@ -149,6 +149,21 @@ if(WITH_TESTS AND VEYON_BUILD_LINUX)
 	add_test(NAME FilesystemSafeJoinTest COMMAND FilesystemSafeJoinTest)
 
 	#
+	# UserIdentificationCacheTest: server-side cache and request collection of the IdentifyUser feature
+	#
+	add_executable(UserIdentificationCacheTest
+		core/UserIdentificationCacheTest.cpp
+	)
+
+	target_link_libraries(UserIdentificationCacheTest PRIVATE
+		Qt${QT_MAJOR_VERSION}::Test
+		Qt${QT_MAJOR_VERSION}::Core
+		veyon-core
+	)
+
+	add_test(NAME UserIdentificationCacheTest COMMAND UserIdentificationCacheTest)
+
+	#
 	# LinuxUserProcessTest: programs started by LinuxCoreFunctions::runProgramAsUser() outlive
 	# the starting process without being killed by SIGPIPE
 	#
