@@ -159,13 +159,13 @@ public:
 	bool hasRestoreToken() const { return m_restoreToken.isEmpty() == false; }
 
 	/**
-	 * @brief Whether the session's screen is locked, according to the screen saver service of
-	 * GNOME or the freedesktop.org one (e.g. KDE Plasma); false if neither can be asked.
-	 *
-	 * GNOME closes all screen sharing sessions while locked and refuses new ones, which would also
-	 * use up the restore token, so the session is only restarted once unlocked.
+	 * @brief Whether a locked screen keeps the compositor from sharing the screen: mutter (GNOME)
+	 * closes all screen sharing sessions while locked and refuses new ones, and an attempt would
+	 * use up the restore token, so the session is only restarted once unlocked. Asks gnome-shell's
+	 * org.gnome.ScreenSaver; false with other compositors (e.g. KWin keeps sharing while locked)
+	 * or if it can't be asked.
 	 */
-	bool isScreenLocked() const;
+	bool isSharingInhibitedByScreenLock() const;
 
 Q_SIGNALS:
 	void started();

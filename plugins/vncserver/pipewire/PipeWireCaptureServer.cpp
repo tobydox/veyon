@@ -199,9 +199,9 @@ void PipeWireCaptureServer::scheduleRestart(int delay)
 
 void PipeWireCaptureServer::restartSession()
 {
-	// GNOME refuses screen sharing while the screen is locked, and an attempt with the restore token
+	// mutter refuses screen sharing while the screen is locked, and an attempt with the restore token
 	// would use it up, so that the approval would be asked for again after unlocking
-	if (m_portalSession->isScreenLocked())
+	if (m_portalSession->isSharingInhibitedByScreenLock())
 	{
 		if (m_waitingForUnlock == false)
 		{

@@ -39,6 +39,8 @@ const auto TestInterface = QStringLiteral("io.veyon.Test.FakePortal");
 const auto MutterService = QStringLiteral("org.gnome.Mutter.RemoteDesktop");
 const auto ScreenSaverService = QStringLiteral("org.gnome.ScreenSaver");
 const auto ScreenSaverObjectPath = QStringLiteral("/org/gnome/ScreenSaver");
+const auto FreedesktopScreenSaverService = QStringLiteral("org.freedesktop.ScreenSaver");
+const auto FreedesktopScreenSaverObjectPath = QStringLiteral("/org/freedesktop/ScreenSaver");
 const auto RegistryInterface = QStringLiteral("org.freedesktop.host.portal.Registry");
 const auto TestAppId = QStringLiteral("io.veyon.PortalSessionTest");
 
@@ -125,6 +127,27 @@ public:
 		if (message.path() == ScreenSaverObjectPath && method == QLatin1String("GetActive"))
 		{
 			connection.send(message.createReply(QVariant(m_screenLocked)));
+			return true;
+		}
+
+		// e.g. KDE's kscreenlocker
+		if (message.path() == FreedesktopScreenSaverObjectPath && method == QLatin1String("GetActive"))
+		{
+			connection.send(message.createReply(QVariant(true)));
+			return true;
+		}
+
+		if (message.interface() == TestInterface && method == QLatin1String("SetFreedesktopScreenSaver"))
+		{
+			if (message.arguments().value(0).toBool())
+			{
+				QDBusConnection(connection).registerService(FreedesktopScreenSaverService);
+			}
+			else
+			{
+				QDBusConnection(connection).unregisterService(FreedesktopScreenSaverService);
+			}
+			connection.send(message.createReply());
 			return true;
 		}
 
@@ -1306,14 +1329,32 @@ private Q_SLOTS:
 	void detectsLockedScreen()
 	{
 		PortalSession session(false);
-		QVERIFY(session.isScreenLocked() == false);
+		QVERIFY(session.isSharingInhibitedByScreenLock() == false);
 
+		// GNOME: mutter refuses sessions while gnome-shell has locked the screen
+		setMutter(true);
+		QVERIFY(session.isSharingInhibitedByScreenLock() == false);
 		setScreenLocked(1);
-		QVERIFY(session.isScreenLocked());
+		QVERIFY(session.isSharingInhibitedByScreenLock());
 		setScreenLocked(0);
-		QVERIFY(session.isScreenLocked() == false);
+		QVERIFY(session.isSharingInhibitedByScreenLock() == false);
 		setScreenLocked(-1);
-		QVERIFY(session.isScreenLocked() == false);
+		QVERIFY(session.isSharingInhibitedByScreenLock() == false);
+		setMutter(false);
+	}
+
+	// KDE: KWin keeps sharing while locked, so a locked screen must not postpone any start
+	void lockedScreenWithoutMutterDoesNotInhibit()
+	{
+		PortalSession session(false);
+		callFakePortal(QStringLiteral("SetFreedesktopScreenSaver"), {true});
+		QVERIFY(session.isSharingInhibitedByScreenLock() == false);
+
+		// even a locked org.gnome.ScreenSaver doesn't count without mutter
+		setScreenLocked(1);
+		QVERIFY(session.isSharingInhibitedByScreenLock() == false);
+		setScreenLocked(-1);
+		callFakePortal(QStringLiteral("SetFreedesktopScreenSaver"), {false});
 	}
 
 private:
@@ -1511,7 +1552,8 @@ int main(int argc, char** argv)
 		if (connection.registerService(FakePortalService) == false ||
 			connection.registerVirtualObject(QStringLiteral("/org/freedesktop/portal"), &portal,
 											 QDBusConnection::SubPath) == false ||
-			connection.registerVirtualObject(ScreenSaverObjectPath, &portal) == false)
+			connection.registerVirtualObject(ScreenSaverObjectPath, &portal) == false ||
+			connection.registerVirtualObject(FreedesktopScreenSaverObjectPath, &portal) == false)
 		{
 			return 1;
 		}

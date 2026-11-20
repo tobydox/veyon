@@ -22,8 +22,8 @@ All steps are asynchronous via the portal `Response` signal.
 If the stream ends (e.g., compositor restart) or the portal closes the session
 (`Session.Closed`, e.g. screen lock or the user stopping screen sharing), the
 session is automatically restarted after a short delay (2 s after the end of
-the stream, 5 s after a failure or a closed session), but not while the screen
-is locked, see [Remembering the approval](#remembering-the-approval-restore-token).
+the stream, 5 s after a failure or a closed session), on GNOME not while the
+screen is locked, see [Remembering the approval](#remembering-the-approval-restore-token).
 
 ### Process layout: `veyon-capture-helper`
 
@@ -149,9 +149,13 @@ is the only supported way to avoid a dialog per user and login.
   the user can stop sharing via the indicator. The capture helper restarts the
   session after 5 s with the stored token, i.e. without a dialog, and logs
   that. As an attempt while locked would use up the token, the helper asks
-  `org.gnome.ScreenSaver` (or `org.freedesktop.ScreenSaver`) whether the
-  screen is locked before starting the session and checks again every 5 s
-  until it is unlocked; neither service is started for this.
+  gnome-shell (`org.gnome.ScreenSaver.GetActive`) whether the screen is
+  locked before starting the session and checks again every 5 s until it is
+  unlocked. This applies only if mutter is the compositor
+  (`org.gnome.Mutter.RemoteDesktop` on the session bus): KWin and others keep
+  sharing while locked, so there the session is started right away and a
+  locked computer stays visible in Veyon Master. No service is started for
+  the check.
 * **Residual risk:** any program running as the same user can read the token
   and start a screen sharing session without a dialog. This is accepted: the
   portal's own permission store (`~/.local/share/flatpak/db/remote-desktop`,

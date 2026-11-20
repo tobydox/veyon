@@ -37,6 +37,7 @@
 static const auto PortalService = QStringLiteral("org.freedesktop.portal.Desktop");
 static const auto PortalObjectPath = QStringLiteral("/org/freedesktop/portal/desktop");
 static const auto MutterRemoteDesktopService = QStringLiteral("org.gnome.Mutter.RemoteDesktop");
+static const auto GnomeScreenSaverService = QStringLiteral("org.gnome.ScreenSaver");
 
 namespace {
 
@@ -597,7 +598,7 @@ void PortalSession::onSessionClosed(const QVariantMap& details)
 
 
 
-bool PortalSession::isScreenLocked() const
+bool PortalSession::isSharingInhibitedByScreenLock() const
 {
 	const auto busInterface = m_sessionBus.interface();
 	if (busInterface == nullptr)
@@ -605,36 +606,25 @@ bool PortalSession::isScreenLocked() const
 		return false;
 	}
 
-	struct ScreenSaver
+	// only mutter closes all screen sharing sessions while locked and refuses new ones; KWin e.g.
+	// doesn't, and waiting there would keep a locked computer black in Veyon Master
+	const QDBusReply<bool> mutter = busInterface->isServiceRegistered(MutterRemoteDesktopService);
+	if (mutter.isValid() == false || mutter.value() == false)
 	{
-		QString service;
-		QString path;
-	};
-	// gnome-shell, and e.g. KWin/ksmserver, xfce4-screensaver
-	static const ScreenSaver screenSavers[] = {
-		{QStringLiteral("org.gnome.ScreenSaver"), QStringLiteral("/org/gnome/ScreenSaver")},
-		{QStringLiteral("org.freedesktop.ScreenSaver"), QStringLiteral("/org/freedesktop/ScreenSaver")},
-	};
-
-	for (const auto& screenSaver : screenSavers)
-	{
-		// only ask running services, the bus could start one otherwise
-		const QDBusReply<bool> registered = busInterface->isServiceRegistered(screenSaver.service);
-		if (registered.isValid() == false || registered.value() == false)
-		{
-			continue;
-		}
-
-		const auto call = QDBusMessage::createMethodCall(screenSaver.service, screenSaver.path, screenSaver.service,
-														 QStringLiteral("GetActive"));
-		const QDBusReply<bool> active = m_sessionBus.call(call, QDBus::Block, ScreenSaverCallTimeout);
-		if (active.isValid())
-		{
-			return active.value();
-		}
+		return false;
 	}
 
-	return false;
+	// only ask a running gnome-shell, the bus could start a service otherwise
+	const QDBusReply<bool> registered = busInterface->isServiceRegistered(GnomeScreenSaverService);
+	if (registered.isValid() == false || registered.value() == false)
+	{
+		return false;
+	}
+
+	const auto call = QDBusMessage::createMethodCall(GnomeScreenSaverService, QStringLiteral("/org/gnome/ScreenSaver"),
+													 GnomeScreenSaverService, QStringLiteral("GetActive"));
+	const QDBusReply<bool> active = m_sessionBus.call(call, QDBus::Block, ScreenSaverCallTimeout);
+	return active.isValid() && active.value();
 }
 
 
