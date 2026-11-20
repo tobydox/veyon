@@ -130,6 +130,19 @@ public:
 	 */
 	void notifyPointer(int buttonMask, int x, int y, QSize framebufferSize);
 
+	/**
+	 * @brief The file which keeps the restore token across server runs:
+	 * `$XDG_STATE_HOME/veyon/portal-restore-token` (default `~/.local/state`) with mode 0600 in a
+	 * directory with mode 0700.
+	 */
+	static QString restoreTokenFilePath();
+
+	/**
+	 * @brief Where builds with Qt < 6.7 kept the restore token (`~/.local/share/veyon`); a token
+	 * there is moved to restoreTokenFilePath() once.
+	 */
+	static QString legacyRestoreTokenFilePath();
+
 Q_SIGNALS:
 	void started();
 	void failed();
@@ -177,8 +190,8 @@ private:
 	void disconnectResponseSignal();
 
 	void loadRestoreToken();
-	void storeRestoreToken() const;
-	static QString restoreTokenFilePath();
+	bool storeRestoreToken() const;
+	static void removeRestoreTokenFiles();
 
 	void setState(State s);
 

@@ -24,14 +24,137 @@
 #include "PortalSession.h"
 #include "VeyonCore.h"
 
-#include <linux/input.h>
+#include <cerrno>
+#include <cstring>
+#include <fcntl.h>
 #include <limits>
+#include <linux/input.h>
+#include <sys/stat.h>
 #include <unistd.h>
 
 // XDG Desktop Portal service and interface names
 static const auto PortalService = QStringLiteral("org.freedesktop.portal.Desktop");
 static const auto PortalObjectPath = QStringLiteral("/org/freedesktop/portal/desktop");
 static const auto MutterRemoteDesktopService = QStringLiteral("org.gnome.Mutter.RemoteDesktop");
+
+namespace {
+
+// the portal fails the whole SelectDevices call for anything but a bare UUID
+constexpr int RestoreTokenLength = 36;
+
+bool isValidRestoreToken(const QString& token)
+{
+	// QUuid would also accept one in braces
+	return token.size() == RestoreTokenLength && QUuid::fromString(token).isNull() == false;
+}
+
+
+
+// the token grants sharing the screen without asking, so it lives in a directory only the user can
+// enter; a directory of someone else or a symbolic link (e.g. planted into a shared home) is refused
+bool preparePrivateDirectory(const QString& directory, bool create)
+{
+	const auto path = QFile::encodeName(directory);
+
+	struct stat status{};
+	if (::lstat(path.constData(), &status) != 0)
+	{
+		if (errno != ENOENT || create == false)
+		{
+			return false;
+		}
+		if (QDir().mkpath(QFileInfo(directory).path()) == false ||
+			(::mkdir(path.constData(), S_IRWXU) != 0 && errno != EEXIST) ||
+			::lstat(path.constData(), &status) != 0)
+		{
+			vWarning() << "could not create directory" << directory << "for the portal restore token";
+			return false;
+		}
+	}
+
+	if (S_ISDIR(status.st_mode) == false || status.st_uid != ::getuid())
+	{
+		vWarning() << "refusing to use" << directory
+				   << "for the portal restore token: not a directory owned by the user";
+		return false;
+	}
+
+	// created by an older version or by hand with the default umask
+	if ((status.st_mode & (S_IRWXG | S_IRWXO)) != 0 && ::chmod(path.constData(), S_IRWXU) != 0)
+	{
+		vWarning() << "could not restrict the permissions of" << directory;
+		return false;
+	}
+
+	return true;
+}
+
+
+
+// an empty string if there is no usable token in the file
+QString readRestoreTokenFile(const QString& filePath)
+{
+	// O_NOFOLLOW: a symbolic link could make another file of the user (or of someone else) the
+	// token; O_NONBLOCK: a FIFO must not block the helper
+	const int fd = ::open(QFile::encodeName(filePath).constData(), O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC);
+	if (fd < 0)
+	{
+		if (errno == ELOOP)
+		{
+			vWarning() << "refusing to read the portal restore token from the symbolic link" << filePath;
+		}
+		else if (errno != ENOENT)
+		{
+			vWarning() << "could not open" << filePath << ::strerror(errno);
+		}
+		return {};
+	}
+
+	QString token;
+	struct stat status{};
+	if (::fstat(fd, &status) != 0 || S_ISREG(status.st_mode) == false || status.st_uid != ::getuid())
+	{
+		vWarning() << "refusing to read the portal restore token from" << filePath
+				   << "- not a regular file owned by the user";
+	}
+	else
+	{
+		if ((status.st_mode & (S_IRWXG | S_IRWXO)) != 0)
+		{
+			::fchmod(fd, S_IRUSR | S_IWUSR);
+		}
+
+		char buffer[RestoreTokenLength * 2]{};
+		const auto size = ::read(fd, buffer, sizeof(buffer));
+		if (size > 0)
+		{
+			token = QString::fromUtf8(buffer, size).trimmed();
+		}
+	}
+	::close(fd);
+
+	return isValidRestoreToken(token) ? token : QString{};
+}
+
+
+
+bool removeOwnFile(const QString& filePath)
+{
+	// also removes a symbolic link itself, never its target
+	struct stat status{};
+	const auto path = QFile::encodeName(filePath);
+	if (::lstat(path.constData(), &status) != 0)
+	{
+		return errno == ENOENT;
+	}
+
+	return status.st_uid == ::getuid() && ::unlink(path.constData()) == 0;
+}
+
+} // namespace
+
+
+
 void PortalSession::registerHostAppId(const QString& appId)
 {
 	auto call = QDBusMessage::createMethodCall(QStringLiteral("org.freedesktop.portal.Desktop"),
@@ -107,7 +230,7 @@ PortalSession::PortalSession(bool persistRestoreToken, QObject* parent) :
 	}
 	else
 	{
-		QFile::remove(restoreTokenFilePath());
+		removeRestoreTokenFiles();
 	}
 }
 
@@ -507,47 +630,114 @@ std::optional<QPoint> PortalSession::readIntPair(const QVariant& value)
 // Restore token persistence
 // ---------------------------------------------------------------------------
 
+
+
+
 QString PortalSession::restoreTokenFilePath()
 {
+	// the same location with every Qt version: QStandardPaths::GenericStateLocation (Qt >= 6.7)
+	// is $XDG_STATE_HOME or ~/.local/state
 #if QT_VERSION >= QT_VERSION_CHECK(6, 7, 0)
-	const auto genericStateDir = QStandardPaths::writableLocation(QStandardPaths::GenericStateLocation);
+	const auto stateDirectory = QStandardPaths::writableLocation(QStandardPaths::GenericStateLocation);
 #else
-	const QString genericStateDir = QDir::homePath() + QStringLiteral("/.local/share");
+	// relative paths are invalid according to the XDG Base Directory Specification
+	auto stateDirectory = qEnvironmentVariable("XDG_STATE_HOME");
+	if (QDir::isAbsolutePath(stateDirectory) == false)
+	{
+		stateDirectory = QDir::homePath() + QStringLiteral("/.local/state");
+	}
 #endif
 
-	return genericStateDir + QStringLiteral("/veyon/portal-restore-token");
+	return stateDirectory + QStringLiteral("/veyon/portal-restore-token");
+}
+
+
+
+QString PortalSession::legacyRestoreTokenFilePath()
+{
+	return QDir::homePath() + QStringLiteral("/.local/share/veyon/portal-restore-token");
 }
 
 
 
 void PortalSession::loadRestoreToken()
 {
-	QFile file(restoreTokenFilePath());
-	if (file.open(QFile::ReadOnly))
+	const auto filePath = restoreTokenFilePath();
+	const auto directory = QFileInfo(filePath).path();
+
+	if (preparePrivateDirectory(directory, false))
 	{
-		const auto token = QString::fromUtf8(file.read(64)).trimmed();
-		// the portal fails the whole SelectDevices call for anything but a bare
-		// UUID, and QUuid would also accept one in braces
-		if (token.size() == 36 && QUuid::fromString(token).isNull() == false)
+		m_restoreToken = readRestoreTokenFile(filePath);
+	}
+
+	// builds with Qt < 6.7 kept the token in the data directory, move it once
+	const auto legacyFilePath = legacyRestoreTokenFilePath();
+	if (legacyFilePath == filePath || QFileInfo(legacyFilePath).exists() == false)
+	{
+		return;
+	}
+
+	if (m_restoreToken.isEmpty())
+	{
+		m_restoreToken = readRestoreTokenFile(legacyFilePath);
+		if (m_restoreToken.isEmpty() == false)
 		{
-			m_restoreToken = token;
+			if (storeRestoreToken() == false)
+			{
+				// keep the old file for another try
+				return;
+			}
+			vInfo() << "moved the portal restore token from" << legacyFilePath << "to" << filePath;
 		}
 	}
+
+	if (removeOwnFile(legacyFilePath) == false)
+	{
+		vWarning() << "could not remove" << legacyFilePath;
+	}
+	// only if empty, the directory may hold other data
+	QDir().rmdir(QFileInfo(legacyFilePath).path());
 }
 
 
 
-void PortalSession::storeRestoreToken() const
+bool PortalSession::storeRestoreToken() const
 {
-	const auto path = restoreTokenFilePath();
-	QSaveFile file(path);
-	if (QDir().mkpath(QFileInfo(path).path()) == false ||
-		file.open(QFile::WriteOnly) == false ||
+	const auto filePath = restoreTokenFilePath();
+	if (preparePrivateDirectory(QFileInfo(filePath).path(), true) == false)
+	{
+		vWarning() << "could not store portal restore token";
+		return false;
+	}
+
+	// QSaveFile writes to the target of a symbolic link, but replaces a regular file atomically by
+	// renaming its temporary file, so the old token stays complete until the new one is
+	if (QFileInfo(filePath).isSymLink() && removeOwnFile(filePath) == false)
+	{
+		vWarning() << "could not remove the symbolic link" << filePath;
+		return false;
+	}
+
+	QSaveFile file(filePath);
+	if (file.open(QFile::WriteOnly) == false ||
 		file.setPermissions(QFile::ReadOwner | QFile::WriteOwner) == false ||
 		file.write(m_restoreToken.toUtf8()) < 0 ||
 		file.commit() == false)
 	{
 		vWarning() << "could not store portal restore token";
+		return false;
+	}
+
+	return true;
+}
+
+
+
+void PortalSession::removeRestoreTokenFiles()
+{
+	for (const auto& filePath : {restoreTokenFilePath(), legacyRestoreTokenFilePath()})
+	{
+		removeOwnFile(filePath);
 	}
 }
 
