@@ -5,11 +5,11 @@
 
 #include <QMutex>
 #include <QObject>
-#include <QTimer>
 
 #include "SecureBuffer.h"
 
 class PortalSession;
+class PortalSessionRestarter;
 class PipeWireFramebuffer;
 class QSocketNotifier;
 
@@ -60,12 +60,6 @@ private Q_SLOTS:
 	void onFrameSizeChanged(QSize size);
 
 private:
-	// delays before restarting the portal session
-	static constexpr int FailedSessionRestartDelay = 5000;
-	static constexpr int EndedStreamRestartDelay = 2000;
-
-	void scheduleRestart(int delay);
-	void restartSession();
 	void closeAndRestartSession();
 	bool initVncServer(const Veyon::Crypto::SecureBuffer& vncPassword);
 	bool listenOnSocket(const QString& socketPath);
@@ -89,6 +83,7 @@ private:
 	const bool m_persistRestoreToken;
 
 	PortalSession* m_portalSession{nullptr};
+	PortalSessionRestarter* m_restarter{nullptr};
 	PipeWireFramebuffer* m_framebuffer{nullptr};
 	rfbScreenInfoPtr m_rfbScreen{nullptr};
 	Veyon::Crypto::SecureBuffer m_vncPassword;
@@ -100,8 +95,4 @@ private:
 	QMutex m_screenMutex;
 
 	bool m_serverRunning{false};
-	bool m_shouldRestart{false};
-	// a single pending restart, however many events asked for one
-	QTimer m_restartTimer;
-	bool m_waitingForUnlock{false};
 };

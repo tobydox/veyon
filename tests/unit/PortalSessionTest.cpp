@@ -22,7 +22,10 @@
 #include <QUuid>
 #include <QtTest>
 
+#include "Configuration/Object.h"
+#include "PipeWireVncConfiguration.h"
 #include "PortalSession.h"
+#include "PortalSessionRestarter.h"
 
 #include <fcntl.h>
 #include <linux/input.h>
@@ -1458,6 +1461,126 @@ private Q_SLOTS:
 		setScreenLocked(-1);
 		QVERIFY(session.isSharingInhibitedByScreenLock() == false);
 		setMutter(false);
+	}
+
+	// a locked GNOME screen postpones the start until it is unlocked
+	void restarterWaitsForUnlock()
+	{
+		bool inhibited = true;
+		int starts = 0;
+		PortalSessionRestarter restarter([&]() { return inhibited; }, []() { return true; }, [&]() { ++starts; });
+		restarter.setDelays({50, 20});
+
+		restarter.startNow();
+		QCOMPARE(starts, 0);
+		QVERIFY(restarter.isWaitingForUnlock());
+		QVERIFY(restarter.isPending());
+
+		// checked again with the failure delay, still locked
+		QTest::qWait(130);
+		QCOMPARE(starts, 0);
+		QVERIFY(restarter.isPending());
+
+		inhibited = false;
+		QTRY_COMPARE(starts, 1);
+		QVERIFY(restarter.isWaitingForUnlock() == false);
+		QVERIFY(restarter.isPending() == false);
+	}
+
+	// however many events ask for a restart, there is one
+	void restarterUsesSingleTimer()
+	{
+		int starts = 0;
+		PortalSessionRestarter restarter([]() { return false; }, []() { return false; }, [&]() { ++starts; });
+		restarter.setDelays({60, 20});
+
+		restarter.streamEnded();
+		restarter.sessionClosed();
+		restarter.sessionFailed();
+		restarter.streamEnded();
+		QTRY_COMPARE(starts, 1);
+		QTest::qWait(150);
+		QCOMPARE(starts, 1);
+
+		// the last request sets the delay
+		restarter.setDelays({1000, 20});
+		QElapsedTimer timer;
+		timer.start();
+		restarter.sessionFailed();
+		restarter.streamEnded();
+		QTRY_COMPARE(starts, 2);
+		QVERIFY(timer.elapsed() < 800);
+	}
+
+	// how the capture helper handles a session closed by the portal: restored with the token, and on
+	// GNOME only once the screen is unlocked
+	void closedSessionIsRestoredAfterUnlock()
+	{
+		removeTokenFiles();
+		PortalSession session(true);
+		PortalSessionRestarter restarter([&]() { return session.isSharingInhibitedByScreenLock(); },
+										 [&]() { return session.hasRestoreToken(); }, [&]() { session.start(); });
+		restarter.setDelays({50, 20});
+		connect(&session, &PortalSession::closedByPortal, &restarter, &PortalSessionRestarter::sessionClosed);
+		QVERIFY(startSession(session));
+		const auto token = lastToken();
+		const auto dialogs = dialogCount();
+		const auto selectDevicesCount = selectDevicesLog().size();
+
+		setMutter(true);
+		setScreenLocked(1);
+		QSignalSpy startedSpy(&session, &PortalSession::started);
+		closePortalSession();
+		QTRY_VERIFY(restarter.isWaitingForUnlock());
+		QTest::qWait(150);
+		QCOMPARE(selectDevicesLog().size(), selectDevicesCount);
+
+		setScreenLocked(0);
+		QVERIFY(startedSpy.wait(3000));
+		::close(session.pipewireFd());
+		syncSessionNumber();
+		QCOMPARE(lastSelectDevices(), QStringLiteral("persist_mode=2;restore_token=") + token);
+		QCOMPARE(dialogCount(), dialogs);
+
+		setScreenLocked(-1);
+		setMutter(false);
+	}
+
+	// on KDE a locked screen doesn't postpone anything
+	void closedSessionIsRestoredRightAwayWithoutMutter()
+	{
+		PortalSession session(true);
+		PortalSessionRestarter restarter([&]() { return session.isSharingInhibitedByScreenLock(); },
+										 [&]() { return session.hasRestoreToken(); }, [&]() { session.start(); });
+		restarter.setDelays({50, 20});
+		connect(&session, &PortalSession::closedByPortal, &restarter, &PortalSessionRestarter::sessionClosed);
+		QVERIFY(startSession(session));
+
+		callFakePortal(QStringLiteral("SetFreedesktopScreenSaver"), {true});
+		setScreenLocked(1);
+		QSignalSpy startedSpy(&session, &PortalSession::started);
+		closePortalSession();
+		QVERIFY(startedSpy.wait(3000));
+		::close(session.pipewireFd());
+		syncSessionNumber();
+		QVERIFY(restarter.isWaitingForUnlock() == false);
+
+		setScreenLocked(-1);
+		callFakePortal(QStringLiteral("SetFreedesktopScreenSaver"), {false});
+	}
+
+	// on by default; an explicit false of an existing configuration stays
+	void persistRestoreTokenDefault()
+	{
+		Configuration::Object object;
+		const PipeWireVncConfiguration configuration(&object);
+		QVERIFY(configuration.persistRestoreToken());
+
+		object.setValue(QStringLiteral("PersistRestoreToken"), false, QStringLiteral("PipeWireVnc"));
+		QVERIFY(configuration.persistRestoreToken() == false);
+
+		object.setValue(QStringLiteral("PersistRestoreToken"), true, QStringLiteral("PipeWireVnc"));
+		QVERIFY(configuration.persistRestoreToken());
 	}
 
 	// KDE: KWin keeps sharing while locked, so a locked screen must not postpone any start

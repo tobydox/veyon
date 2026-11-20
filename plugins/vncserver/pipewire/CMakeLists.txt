@@ -60,6 +60,8 @@ if(PipeWire_FOUND AND Qt${QT_MAJOR_VERSION}DBus_FOUND)
 		PortalPointerMapping.h
 		PortalSession.cpp
 		PortalSession.h
+		PortalSessionRestarter.cpp
+		PortalSessionRestarter.h
 		${DBUS_GENERATED_SOURCES}
 	)
 

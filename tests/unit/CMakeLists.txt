@@ -512,6 +512,8 @@ if(WITH_TESTS AND VEYON_BUILD_LINUX)
 				PortalSessionTest.cpp
 				${CAPTURE_HELPER_SOURCE_DIR}/PortalInputDispatcher.cpp
 				${CAPTURE_HELPER_SOURCE_DIR}/PortalSession.cpp
+				${CAPTURE_HELPER_SOURCE_DIR}/PortalSessionRestarter.cpp
+				${CAPTURE_HELPER_SOURCE_DIR}/PipeWireVncConfiguration.cpp
 				${PORTAL_DBUS_INTERFACE_SOURCES}
 			)
 			set_default_target_properties(PortalSessionTest)
